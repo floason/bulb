@@ -1,0 +1,8 @@
+// floason (C) 2025
+// Licensed under the MIT License.
+
+#pragma once
+
+#define MAJOR @bulb_VERSION_MAJOR@
+#define MINOR @bulb_VERSION_MINOR@
+#define PATCH @bulb_VERSION_PATCH@
