@@ -5,6 +5,8 @@
 
 #include "unisock.h"
 #include "client.h"
+#include "obj_reader.h"
+#include "obj_process.h"
 
 // Start handling a non-critical error.
 static bool _client_handle_non_critical_error(struct bulb_client* client, 
@@ -48,29 +50,17 @@ static int _client_thread(void* c)
 
     for (;;)
     {
-        // TODO
-        /*
-            recv():
-            - result > 0: size of data read
-            - result = 0: socket closed on server's end, call client disconnect
-            - result = SOCKET_ERROR (-1): connection possibly interrupted, shut it down
-        */
-        
-        char buffer[512] = { 0 };
-        int result = recv(client->sock, buffer, sizeof(buffer), 0);
+        bool socket_closed;
+        struct bulb_obj* obj = bulb_obj_read(client->sock, &socket_closed);
+        if (obj == NULL)
+        {
+            enum client_error_state state = socket_closed ? CLIENT_DISCONNECT : CLIENT_FORCE_DISCONNECT;
+            _client_handle_critical_error(client->bulb_client, state, NULL);
+            return 0;
+        }
 
-        if (result > 0)
-            puts(buffer);
-        else if (result == 0)
-        {
-            _client_handle_critical_error(client->bulb_client, CLIENT_DISCONNECT, NULL);
-            return 0;
-        }
-        else if (result == SOCKET_ERROR)
-        {
-            _client_handle_critical_error(client->bulb_client, CLIENT_FORCE_DISCONNECT, NULL);
-            return 0;
-        }
+        ASSERT(bulb_process_object(obj, server, client), { return 0; },
+            "Failed to process Bulb object of type %d", obj->type);
     }
 
     return 0;

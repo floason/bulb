@@ -17,7 +17,6 @@ static bool _client_exception_handler(struct bulb_client* client,
             exit(0);
         
         default:
-            puts("oops");
             return !fatal;
     }
 }

@@ -5,6 +5,7 @@
 
 #include "unisock.h"
 #include "server.h"
+#include "stdout_obj.h"
 
 // Start handling a non-critical error.
 static bool _server_handle_non_critical_error(struct bulb_server* server, 
@@ -46,27 +47,20 @@ static int _server_client_thread(void* c)
 
     for (;;)
     {
-        // TODO
-        /*
-            recv():
-            - result > 0: size of data read
-            - result = 0: socket closed on client's end, call client disconnect
-            - result = SOCKET_ERROR (-1): connection possibly interrupted, shut it down
-        */
 #if defined WIN32
         Sleep(5000);
 #elif defined __UNIX__
         sleep(5);
 #endif
-        const char* msg = "u were kicked soz lols!!!";
-        send(client->sock, msg, strlen(msg), 0);
+
+        stdout_obj_write(client->sock, "u were kicked soz lols!!!\n");
         server_disconnect_client(server, client);
         return 0;
     }
 }
 
 // A thread is created for this function whenever a server instance starts listening
-// for incoming client connections to accept.
+// for incoming client connections to accept.^
 static int _server_listen_thread(void* s)
 {
     struct bulb_server* server = (struct bulb_server*)s;

@@ -16,7 +16,6 @@ static bool _server_exception_handler(struct bulb_server* server,
             exit(0);
 
         default:
-            puts("oops");
             return !fatal;
     }
 }
