@@ -1,0 +1,175 @@
+// floason (C) 2025
+// Licensed under the MIT License.
+
+#include <string.h>
+
+#include "unisock.h"
+#include "client.h"
+
+// Start handling a non-critical error.
+static bool _client_handle_non_critical_error(struct bulb_client* client, 
+                                              enum client_error_state error, 
+                                              void* data)
+{
+    // If no exception handler is set, just continue as normal.
+    if (client->exception_handler == NULL)
+        return true;
+
+    // Invoke the exception handler. If it returns false, the server should shut down.
+    if (!client->exception_handler(client, error, false, data))
+    {
+        if (client != NULL)
+            client->error_state = error;
+        return false;
+    }
+    return true;
+}
+
+// Start handling a critical error.
+static void _client_handle_critical_error(struct bulb_client* client, 
+                                          enum client_error_state error, 
+                                          void* data)
+{
+    // If no exception handler is set, ignore.
+    if (client->exception_handler == NULL)
+        return;
+
+    client->exception_handler(client, error, true, data);
+    if (client != NULL)
+        client->error_state = error;
+}
+
+// A thread is created for this function once a client instance connects
+// to a server successfully.
+static int _client_thread(void* c)
+{
+    struct client_node* client = (struct client_node*)c;
+    struct server_node* server = client->server_node;
+
+    for (;;)
+    {
+        // TODO
+        /*
+            recv():
+            - result > 0: size of data read
+            - result = 0: socket closed on server's end, call client disconnect
+            - result = SOCKET_ERROR (-1): connection possibly interrupted, shut it down
+        */
+        
+        char buffer[512] = { 0 };
+        int result = recv(client->sock, buffer, sizeof(buffer), 0);
+
+        if (result > 0)
+            puts(buffer);
+        else if (result == 0)
+        {
+            _client_handle_critical_error(client->bulb_client, CLIENT_DISCONNECT, NULL);
+            return 0;
+        }
+        else if (result == SOCKET_ERROR)
+        {
+            _client_handle_critical_error(client->bulb_client, CLIENT_FORCE_DISCONNECT, NULL);
+            return 0;
+        }
+    }
+
+    return 0;
+}
+
+// Create a new client instance. Returns NULL on error.
+struct bulb_client* client_init(const char* host, const char* port, enum client_error_state* error_state)
+{
+    struct bulb_client* client = quick_malloc(sizeof(struct bulb_client));
+
+    // If Winsock is being used, Winsock must be initialized beforehand.
+    int result = 0;
+#ifdef WIN32
+    result = WSAStartup(MAKEWORD(2, 2), &client->_wsa_data);
+    ASSERT(result == 0, 
+    { 
+        client->error_state = CLIENT_WINSOCK_FAIL;
+        goto fail; 
+    }, "Winsock 2.2 failed to start:%d\n", result);
+#endif
+
+    // Resolve the hostname to connect to.
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_socktype = SOCK_STREAM;    // Use reliable, segmented communication.
+    result = getaddrinfo(host, port, &hints, &client->addr_ptr);
+    ASSERT(result == 0, 
+    { 
+        client->error_state = CLIENT_ADDRESS_FAIL;
+        goto fail; 
+    }, "getaddrinfo() failed: %d\n", result);
+
+    // Set up the local client node and instantiate its socket for server communication.
+    client->local_node = quick_malloc(sizeof(struct client_node));
+    client->local_node->bulb_client = client;
+    client->local_node->sock = socket(client->addr_ptr->ai_family, client->addr_ptr->ai_socktype,
+        client->addr_ptr->ai_protocol);
+    ASSERT(client->local_node->sock != INVALID_SOCKET, 
+    { 
+        client->error_state = CLIENT_SOCKET_FAIL;
+        goto fail; 
+    }, "Failed to create socket: %d\n", socket_errno());
+    
+    server_node_init(&client->server_node);
+    return client;
+
+fail:
+    if (error_state != NULL)
+        *error_state = client->error_state;
+    if (client->local_node != NULL)
+        free(client->local_node);
+    if (client->addr_ptr != NULL)
+        freeaddrinfo(client->addr_ptr);
+    free(client);
+    return NULL;
+}
+
+// Set a custom exception handler.
+void client_set_exception_handler(struct bulb_client* client, client_exception_func func)
+{
+    client->exception_handler = func;
+}
+
+// Connect the client. Returns false on error. TODO: userinfo parameter
+bool client_connect(struct bulb_client* client)
+{
+    ASSERT(client, { return false; });
+    ASSERT(!client->is_connected, { return false; });
+
+    int result = connect(client->local_node->sock, client->addr_ptr->ai_addr, 
+        (int)client->addr_ptr->ai_addrlen);
+    ASSERT(result != SOCKET_ERROR, 
+    { 
+        client->error_state = CLIENT_SOCKET_FAIL;
+        return false; 
+    }, "Failed to connect the client: %d\n", socket_errno());
+    freeaddrinfo(client->addr_ptr);
+    client->addr_ptr = NULL;
+    client->is_connected = true;
+
+    server_connect_client(&client->server_node, client->local_node);
+    thrd_create(&client->local_node->thread, _client_thread, client->local_node);
+    return true;
+}
+
+// Free a client instance.
+void client_free(struct bulb_client* client)
+{
+    ASSERT(client, { return; });
+#if WIN32
+    WSACleanup();
+#endif
+
+    // If the bulb_client instance is being freed from memory, the entire client
+    // connection is being terminated. Thus, every single client node should
+    // also be cleaned up in the process.
+    server_disconnect_all_clients(&client->server_node);
+
+    if (client->addr_ptr != NULL)
+        freeaddrinfo(client->addr_ptr);
+    free(client);
+}
