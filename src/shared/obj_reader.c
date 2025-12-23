@@ -30,9 +30,9 @@ struct bulb_obj* bulb_obj_read(SOCKET sock, bool* socket_closed)
 
     char buffer[sizeof(struct bulb_obj)];
     int read = recv(sock, buffer, sizeof(buffer), MSG_PEEK);
-    ASSERT(read != SOCKET_ERROR, { return NULL; }, "Socket error during bulb_obj_read()\n");
+    ASSERT(read != SOCKET_ERROR, { return NULL; }, "The server connection has closed unexpectedly.");
 
-    // If read is zero, the connection has likely been closed.
+    // If read is zero, the connection has likely been closed intentionally.
     if (read == 0)
     {
         *socket_closed = true;
