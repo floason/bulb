@@ -26,11 +26,11 @@ bool stdout_obj_write(SOCKET sock, const char* msg)
     obj->base.size = size;
     strcpy(obj->buffer, msg);
 
-    ASSERT(bulb_obj_write(sock, (struct bulb_obj*)obj),
+    if (bulb_obj_write(sock, (struct bulb_obj*)obj) == false)
     {
         free(obj);
         return false;
-    }, "Socket error during stdout_obj_write()\n");
+    }
     free(obj);
     return true;
 }
