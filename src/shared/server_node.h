@@ -13,6 +13,17 @@
 // Use this as the first port to try as the server, by default.
 #define FIRST_PORT      32765
 
+#define LOOP_CLIENTS(LIST, EXCEPT, ID, SCOPE)   \
+    {                                           \
+        struct client_node* ID = LIST;          \
+        while (ID != NULL && ID->validated)     \
+        {                                       \
+            if (ID != EXCEPT)                   \
+                SCOPE                           \
+            ID = ID->next;                      \
+        }                                       \
+    }                                           
+
 struct server_node
 {
     // TODO: populate with server details such as name

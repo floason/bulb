@@ -5,10 +5,13 @@
 
 #include "unisock.h"
 #include "server_node.h"
+#include "userinfo_obj.h" // TODO: remove
 
 // Close and free a client node.
 static void _client_close(struct client_node* client)
 {
+    if (client->userinfo != NULL)
+        free(client->userinfo);
     if (client->sock != INVALID_SOCKET)
     {
         shutdown(client->sock, SHUT_RDWR);
@@ -27,18 +30,20 @@ void server_node_init(struct server_node* node)
 void server_connect_client(struct server_node* server, struct client_node* client)
 {
     // The client node should already have its socket configured.
+    
     client->next = NULL;
     client->prev = server->clients;
     if (server->clients == NULL)
         server->clients = client;
-    
-    puts("client connect");
-}
+}   
 
 // Disconnect a client from a server node's clients list. This will free the client
 // node from memory.
 void server_disconnect_client(struct server_node* server, struct client_node* client)
 {
+    // TODO: remove
+    printf("client %s disconnect\n", client->userinfo->name);
+
     if (client->prev)
         client->prev->next = client->next;
     else
@@ -47,7 +52,6 @@ void server_disconnect_client(struct server_node* server, struct client_node* cl
         client->next->prev = client->prev;
 
     _client_close(client);
-    puts("client disconnect");
 }
 
 // Disconnect all connected clients from a server node's clients list. This will free

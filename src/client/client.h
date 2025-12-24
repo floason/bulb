@@ -7,6 +7,7 @@
 
 #include "unisock.h"
 #include "server_node.h"
+#include "userinfo_obj.h"
 
 struct bulb_client;
 
@@ -25,7 +26,8 @@ enum client_error_state
     // Fatal errors.
     CLIENT_WINSOCK_FAIL,        // Windows only.
     CLIENT_ADDRESS_FAIL,
-    CLIENT_SOCKET_FAIL
+    CLIENT_SOCKET_FAIL,
+    CLIENT_AUTH_FAIL
 };
 
 typedef bool (*client_exception_func)(struct bulb_client* client, 
@@ -56,8 +58,12 @@ struct bulb_client* client_init(const char* host, const char* port, enum client_
 // Set a custom exception handler.
 void client_set_exception_handler(struct bulb_client* client, client_exception_func func);
 
-// Connect the client. TODO: userinfo parameter
+// Connect the client. Returns false on error.
 bool client_connect(struct bulb_client* client);
+
+// Authenticate the user's connection. This must be called after the client successfully
+// connects to a server. Returns false on error.
+bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinfo);
 
 // Free a client instance.
 void client_free(struct bulb_client* client);

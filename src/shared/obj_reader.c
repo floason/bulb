@@ -4,6 +4,7 @@
 #include "unisock.h"
 #include "obj_reader.h"
 #include "stdout_obj.h"
+#include "userinfo_obj.h"
 
 // Handle reading a root Bulb object.
 static struct bulb_obj* _bulb_obj_read(SOCKET sock, struct bulb_obj* header)
@@ -30,12 +31,11 @@ struct bulb_obj* bulb_obj_read(SOCKET sock, bool* socket_closed)
 
     char buffer[sizeof(struct bulb_obj)];
     int read = recv(sock, buffer, sizeof(buffer), MSG_PEEK);
-    ASSERT(read != SOCKET_ERROR, { return NULL; }, "The server connection has closed unexpectedly.");
 
-    // If read is zero, the connection has likely been closed intentionally.
-    if (read == 0)
+    // If read does not return a valid length, the connection has likely been closed.
+    if (read <= 0)
     {
-        *socket_closed = true;
+        *socket_closed = (read != SOCKET_ERROR);
         return NULL;
     }
     
@@ -46,6 +46,8 @@ struct bulb_obj* bulb_obj_read(SOCKET sock, bool* socket_closed)
             return _bulb_obj_read(sock, header);
         case BULB_STDOUT:
             return stdout_obj_read(sock, header);
+        case BULB_USERINFO:
+            return userinfo_obj_read(sock, header);
         default:
             ASSERT(false, { return NULL; }, "Invalid obj type %d\n", header->type);
     }

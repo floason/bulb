@@ -1,11 +1,15 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
+// See userinfo_obj.c for user validation code.
+
 #include <string.h>
 
 #include "unisock.h"
 #include "server.h"
 #include "stdout_obj.h"
+#include "obj_reader.h"
+#include "obj_process.h"
 
 // Start handling a non-critical error.
 static bool _server_handle_non_critical_error(struct bulb_server* server, 
@@ -47,6 +51,25 @@ static int _server_client_thread(void* c)
 
     for (;;)
     {
+        bool socket_closed;
+        struct bulb_obj* obj = bulb_obj_read(client->sock, &socket_closed);
+        if (obj == NULL)
+        {
+            server_disconnect_client(server, client);
+            return 0;
+        }
+
+        ASSERT(bulb_process_object(obj, server, client), { return 0; },
+            "Failed to process Bulb object of type %d", obj->type);
+
+        // A processed object may have marked the client node object for
+        // deletion. If this is the case, disconnect the client.
+        if (client->delete)
+        {
+            server_disconnect_client(server, client);
+            return 0;
+        }
+
 #if defined WIN32
         Sleep(5000);
 #elif defined __UNIX__
@@ -60,16 +83,17 @@ static int _server_client_thread(void* c)
 }
 
 // A thread is created for this function whenever a server instance starts listening
-// for incoming client connections to accept.^
+// for incoming client connections to accept.
 static int _server_listen_thread(void* s)
 {
     struct bulb_server* server = (struct bulb_server*)s;
 
     for (;;)
     {
+        int length = sizeof(struct sockaddr_in);
         struct client_node* node = quick_malloc(sizeof(struct client_node));
         node->server_node = &server->server_node;
-        node->sock = accept(server->listen_sock, NULL, NULL);
+        node->sock = accept(server->listen_sock, (struct sockaddr*)&node->addr, &length);
         ASSERT(node->sock != INVALID_SOCKET,
         {
             free(node);
@@ -105,6 +129,7 @@ struct bulb_server* server_init(const char* port, enum server_error_state* error
     struct addrinfo* addr_ptr = NULL;
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;          // Use IPv4.
     hints.ai_socktype = SOCK_STREAM;    // Use reliable, segmented communication.
     hints.ai_flags = AI_PASSIVE;        // Required for binding.
     result = getaddrinfo(NULL, port, &hints, &addr_ptr);

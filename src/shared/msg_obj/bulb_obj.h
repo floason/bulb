@@ -16,15 +16,14 @@ enum bulb_obj_type
 {
     BULB_OBJ,
 
-    BULB_STDOUT
+    BULB_STDOUT,
+    BULB_USERINFO
 };
 
 struct bulb_obj
 {
     enum bulb_obj_type type;
     size_t size;
-
-    // todo: store sender's address
 };
 
 // This is a basic template for reading a Bulb object that has no additional reading

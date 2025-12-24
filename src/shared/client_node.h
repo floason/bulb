@@ -6,9 +6,12 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <threads.h>
 
 #include "unisock.h"
+
+struct userinfo_obj;
 
 struct client_node
 {
@@ -16,8 +19,15 @@ struct client_node
     struct bulb_client* bulb_client;
 #endif
     struct server_node* server_node;
+    struct userinfo_obj* userinfo;
 
-    // TODO: populate with address, username, etc attributes
+#ifdef SERVER
+    // Used during client validation.
+    bool delete;
+    bool validated;
+
+    struct sockaddr_in addr;
+#endif
 
     SOCKET sock;
     thrd_t thread;

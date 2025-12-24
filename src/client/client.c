@@ -7,6 +7,7 @@
 #include "client.h"
 #include "obj_reader.h"
 #include "obj_process.h"
+#include "userinfo_obj.h"
 
 // Start handling a non-critical error.
 static bool _client_handle_non_critical_error(struct bulb_client* client, 
@@ -55,6 +56,8 @@ static int _client_thread(void* c)
         if (obj == NULL)
         {
             enum client_error_state state = socket_closed ? CLIENT_DISCONNECT : CLIENT_FORCE_DISCONNECT;
+            if (state == CLIENT_FORCE_DISCONNECT)
+                puts("The server connection has closed unexpectedly.");
             _client_handle_critical_error(client->bulb_client, state, NULL);
             return 0;
         }
@@ -85,6 +88,7 @@ struct bulb_client* client_init(const char* host, const char* port, enum client_
     // Resolve the hostname to connect to.
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;          // Use IPv4.
     hints.ai_socktype = SOCK_STREAM;    // Use reliable, segmented communication.
     result = getaddrinfo(host, port, &hints, &client->addr_ptr);
     ASSERT(result == 0, 
@@ -124,7 +128,7 @@ void client_set_exception_handler(struct bulb_client* client, client_exception_f
     client->exception_handler = func;
 }
 
-// Connect the client. Returns false on error. TODO: userinfo parameter
+// Connect the client. Returns false on error.
 bool client_connect(struct bulb_client* client)
 {
     ASSERT(client, { return false; });
@@ -143,6 +147,30 @@ bool client_connect(struct bulb_client* client)
 
     server_connect_client(&client->server_node, client->local_node);
     thrd_create(&client->local_node->thread, _client_thread, client->local_node);
+    return true;
+}
+
+// Authenticate the user's connection. This must be called after the client successfully
+// connects to a server. Returns false on error.
+bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinfo)
+{
+    ASSERT(client, { return false; });
+    ASSERT(client->is_connected, { return false; });
+    
+    ASSERT(strlen(userinfo.name) > 0, 
+    { 
+        client->error_state = CLIENT_AUTH_FAIL;
+        return false; 
+    }, "Your username cannot be empty!\n");
+
+    userinfo.base.type = BULB_USERINFO;
+    userinfo.base.size = sizeof(userinfo);
+    ASSERT(userinfo_obj_write(client->local_node->sock, &userinfo), 
+    { 
+        client->error_state = CLIENT_AUTH_FAIL;
+        return false; 
+    }, "The server connection has closed unexpectedly.\n");
+
     return true;
 }
 

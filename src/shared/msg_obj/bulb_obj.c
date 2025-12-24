@@ -28,8 +28,7 @@ bool bulb_obj_write(SOCKET sock, struct bulb_obj* obj)
     do
     {
         int written = send(sock, (const char*)obj, min(remaining, RECV_BUFFER_SIZE), 0);
-        if (written == SOCKET_ERROR)
-            return false;
+        ASSERT(written != SOCKET_ERROR, { return false; }, "Socket error during bulb_obj_write()\n")
         remaining -= written;
     } while (remaining > 0);
     return true;
