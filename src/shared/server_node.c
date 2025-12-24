@@ -30,7 +30,7 @@ void server_node_init(struct server_node* node)
 void server_connect_client(struct server_node* server, struct client_node* client)
 {
     // The client node should already have its socket configured.
-    
+
     client->next = NULL;
     client->prev = server->clients;
     if (server->clients == NULL)
@@ -42,7 +42,8 @@ void server_connect_client(struct server_node* server, struct client_node* clien
 void server_disconnect_client(struct server_node* server, struct client_node* client)
 {
     // TODO: remove
-    printf("client %s disconnect\n", client->userinfo->name);
+    if (client->userinfo)
+        printf("client %s disconnect\n", client->userinfo->name);
 
     if (client->prev)
         client->prev->next = client->next;

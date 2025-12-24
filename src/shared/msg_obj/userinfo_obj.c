@@ -61,5 +61,9 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     char ip_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
     printf("Client \"%s\" (%s) has connected\n", client->userinfo->name, ip_str);
+    
+    return;
 #endif
+
+    ASSERT(false, { });
 }

@@ -16,9 +16,9 @@
 #define LOOP_CLIENTS(LIST, EXCEPT, ID, SCOPE)   \
     {                                           \
         struct client_node* ID = LIST;          \
-        while (ID != NULL && ID->validated)     \
+        while (ID != NULL)                      \
         {                                       \
-            if (ID != EXCEPT)                   \
+            if (ID != EXCEPT && ID->validated)  \
                 SCOPE                           \
             ID = ID->next;                      \
         }                                       \
