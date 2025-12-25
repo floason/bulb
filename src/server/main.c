@@ -24,7 +24,7 @@ int main()
 {
     // TODO: try probing successive ports on SERVER_ADDRESS_FAIL
     struct bulb_server* server = server_init(STR(FIRST_PORT), NULL);
-    ASSERT(server, { return 1; });
+    ASSERT(server, return 1);
 
     server_set_exception_handler(server, _server_exception_handler);
     ASSERT(server_listen(server), 

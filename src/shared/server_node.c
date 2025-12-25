@@ -5,7 +5,8 @@
 
 #include "unisock.h"
 #include "server_node.h"
-#include "userinfo_obj.h" // TODO: remove
+#include "userinfo_obj.h"
+#include "disconnect_obj.h"
 
 // Close and free a client node.
 static void _client_close(struct client_node* client)
@@ -32,18 +33,36 @@ void server_connect_client(struct server_node* server, struct client_node* clien
     // The client node should already have its socket configured.
 
     client->next = NULL;
-    client->prev = server->clients;
+    client->prev = server->clients_tail;
+    if (server->clients_tail)
+        server->clients_tail->next = client;
+    server->clients_tail = client;
     if (server->clients == NULL)
         server->clients = client;
+
+    // See further client connection (i.e. authentication) code in msg_obj/userinfo_obj.c.
 }   
 
 // Disconnect a client from a server node's clients list. This will free the client
 // node from memory.
 void server_disconnect_client(struct server_node* server, struct client_node* client)
 {
-    // TODO: remove
-    if (client->userinfo)
-        printf("client %s disconnect\n", client->userinfo->name);
+#ifdef SERVER
+    // If the client did not fail server authentication checks, log whether it disconnected 
+    // or if the client attempted to connect but a connection could not be established to 
+    // begin with.
+    char ip_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
+    if (!client->delete)
+    {
+        if (client->userinfo)
+            printf("Client \"%s\" (%s) has disconnected\n", client->userinfo->name, ip_str);
+        else
+            fprintf(stderr, "Client from address %s failed to connect\n", ip_str);
+    }
+#else
+    printf("Client \"%s\" has disconnected\n", client->userinfo->name);
+#endif
 
     if (client->prev)
         client->prev->next = client->next;
@@ -51,6 +70,15 @@ void server_disconnect_client(struct server_node* server, struct client_node* cl
         server->clients = client->next;
     if (client->next)
         client->next->prev = client->prev;
+    else
+        server->clients_tail = client->prev;
+
+    // Synchronise the client's departure with all other clients.
+#ifdef SERVER
+    if (client->validated)
+        LOOP_CLIENTS(server->clients, client, node, 
+            disconnect_obj_write(node->sock, client->userinfo->name));
+#endif
 
     _client_close(client);
 }

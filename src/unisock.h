@@ -63,7 +63,7 @@
         if (NUM_ARGS(__VA_ARGS__) > 0)              \
             _unisock_error(stderr, ##__VA_ARGS__ ); \
         assert(0);                                  \
-        ASSERT_SCOPE                                \
+        ASSERT_SCOPE;                               \
     }                                               \
     
 /* DO NOT USE! */

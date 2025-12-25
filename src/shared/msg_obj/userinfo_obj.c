@@ -10,6 +10,7 @@
 #include "unisock.h"
 #include "stdout_obj.h"
 #include "userinfo_obj.h"
+#include "connect_obj.h"
 
 // Read a userinfo_obj object. Returns NULL on failure.
 struct bulb_obj* userinfo_obj_read(SOCKET sock, struct bulb_obj* header)
@@ -39,18 +40,24 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         return;
     }
 
+    // Get the connecting IP address.
+    char ip_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
+
     // Reject clients with the same username as another user.
     LOOP_CLIENTS(server->clients, client, node,
     {
         if (strcmp(client->userinfo->name, node->userinfo->name) == 0)
         {
-            stdout_obj_write(client->sock, "Sorry, another client is already connected with this name!\n");
+            stdout_obj_write(client->sock, "Sorry, another client is already connected with that name!\n");
+            fprintf(stderr, "Client from address %s failed to connect as username \"%s\" is already "   \
+                "occupied\n", ip_str, client->userinfo->name);
             client->delete = true;
             return;
         }
     });
 
-    // Validate the client and log its entry.    
+    // Validate the client and log its entry.
     client->validated = true;
     LOOP_CLIENTS(server->clients, NULL, node,
     {
@@ -58,12 +65,17 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         snprintf(buffer, sizeof(buffer), "Client \"%s\" has connected\n", client->userinfo->name);
         stdout_obj_write(node->sock, buffer);
     });
-    char ip_str[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
     printf("Client \"%s\" (%s) has connected\n", client->userinfo->name, ip_str);
+
+    // Synchronise the client list on each client.
+    LOOP_CLIENTS(server->clients, client, node, 
+    {
+        connect_obj_write(client->sock, node->userinfo);
+        connect_obj_write(node->sock, client->userinfo);
+    });
     
     return;
 #endif
 
-    ASSERT(false, { });
+    ASSERT(false, return);
 }

@@ -20,11 +20,11 @@ struct client_node
 #endif
     struct server_node* server_node;
     struct userinfo_obj* userinfo;
+    bool validated;
 
 #ifdef SERVER
     // Used during client validation.
     bool delete;
-    bool validated;
 
     struct sockaddr_in addr;
 #endif

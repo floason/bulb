@@ -5,6 +5,8 @@
 #include "obj_reader.h"
 #include "stdout_obj.h"
 #include "userinfo_obj.h"
+#include "connect_obj.h"
+#include "disconnect_obj.h"
 
 // Handle reading a root Bulb object.
 static struct bulb_obj* _bulb_obj_read(SOCKET sock, struct bulb_obj* header)
@@ -48,7 +50,11 @@ struct bulb_obj* bulb_obj_read(SOCKET sock, bool* socket_closed)
             return stdout_obj_read(sock, header);
         case BULB_USERINFO:
             return userinfo_obj_read(sock, header);
+        case BULB_CONNECT:
+            return connect_obj_read(sock, header);
+        case BULB_DISCONNECT:
+            return disconnect_obj_read(sock, header);
         default:
-            ASSERT(false, { return NULL; }, "Invalid obj type %d\n", header->type);
+            ASSERT(false, return NULL, "Invalid obj type %d\n", header->type);
     }
 }

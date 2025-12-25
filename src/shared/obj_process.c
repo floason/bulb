@@ -10,19 +10,27 @@
 #include "bulb_obj.h"
 #include "stdout_obj.h"
 #include "userinfo_obj.h"
+#include "connect_obj.h"
+#include "disconnect_obj.h"
 
-// Process a Bulb object. The object will be free()'d afterwards. Returns false on error.
+// Process a Bulb object. The object may be free()'d afterwards. Returns false on error.
 bool bulb_process_object(struct bulb_obj* obj, struct server_node* server, struct client_node* client)
 {
     switch (obj->type)
     {
         case BULB_OBJ:
-            ASSERT(false, { return false; }, "Test object was found in stream");
+            ASSERT(false, return false, "Test object was found in stream");
         case BULB_STDOUT:
             stdout_obj_process((struct stdout_obj*)obj, server, client);
             return true;
         case BULB_USERINFO:
             userinfo_obj_process((struct userinfo_obj*)obj, server, client);
+            return true;
+        case BULB_CONNECT:
+            connect_obj_process((struct connect_obj*)obj, server, client);
+            return true;
+        case BULB_DISCONNECT:
+            disconnect_obj_process((struct disconnect_obj*)obj, server, client);
             return true;
         default:
             return false;

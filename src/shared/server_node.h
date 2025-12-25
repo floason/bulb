@@ -19,7 +19,7 @@
         while (ID != NULL)                      \
         {                                       \
             if (ID != EXCEPT && ID->validated)  \
-                SCOPE                           \
+                SCOPE;                          \
             ID = ID->next;                      \
         }                                       \
     }                                           
@@ -28,7 +28,8 @@ struct server_node
 {
     // TODO: populate with server details such as name
 
-    struct client_node* clients;    // The first node will always be the local client in client code!
+    struct client_node* clients;        // The first node will always be the local client in client code!
+    struct client_node* clients_tail;    
 };
 
 // Initialise the server node.

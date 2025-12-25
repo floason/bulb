@@ -59,8 +59,8 @@ static int _server_client_thread(void* c)
             return 0;
         }
 
-        ASSERT(bulb_process_object(obj, server, client), { return 0; },
-            "Failed to process Bulb object of type %d", obj->type);
+        ASSERT(bulb_process_object(obj, server, client), return 0,
+            "Failed to process Bulb object of type %d\n", obj->type);
 
         // A processed object may have marked the client node object for
         // deletion. If this is the case, disconnect the client.
@@ -70,6 +70,8 @@ static int _server_client_thread(void* c)
             return 0;
         }
 
+        // TODO: remove
+        /*
 #if defined WIN32
         Sleep(5000);
 #elif defined __UNIX__
@@ -79,6 +81,7 @@ static int _server_client_thread(void* c)
         stdout_obj_write(client->sock, "u were kicked soz lols!!!\n");
         server_disconnect_client(server, client);
         return 0;
+        */
     }
 }
 
@@ -172,14 +175,14 @@ fail:
 // Set a custom exception handler.
 void server_set_exception_handler(struct bulb_server* server, server_exception_func func)
 {
-    ASSERT(server, { return; });
+    ASSERT(server, return);
     server->exception_handler = func;
 }
 
 // Start accepting new clients asynchronously. Returns false on error.
 bool server_listen(struct bulb_server* server)
 {
-    ASSERT(server, { return false; });
+    ASSERT(server, return false);
     ASSERT(!server->is_listening, { return false; })
 
     int result = listen(server->listen_sock, SOMAXCONN);
@@ -197,7 +200,7 @@ bool server_listen(struct bulb_server* server)
 // Shut down and free a server instance.
 void server_free(struct bulb_server* server)
 {
-    ASSERT(server, { return; });
+    ASSERT(server, return);
 #ifdef WIN32
     WSACleanup();
 #endif

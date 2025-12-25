@@ -62,8 +62,8 @@ static int _client_thread(void* c)
             return 0;
         }
 
-        ASSERT(bulb_process_object(obj, server, client), { return 0; },
-            "Failed to process Bulb object of type %d", obj->type);
+        ASSERT(bulb_process_object(obj, server, client), return 0,
+            "Failed to process Bulb object of type %d\n", obj->type);
     }
 
     return 0;
@@ -109,6 +109,8 @@ struct bulb_client* client_init(const char* host, const char* port, enum client_
     }, "Failed to create socket: %d\n", socket_errno());
     
     server_node_init(&client->server_node);
+    client->local_node->server_node = &client->server_node;
+
     return client;
 
 fail:
@@ -131,8 +133,8 @@ void client_set_exception_handler(struct bulb_client* client, client_exception_f
 // Connect the client. Returns false on error.
 bool client_connect(struct bulb_client* client)
 {
-    ASSERT(client, { return false; });
-    ASSERT(!client->is_connected, { return false; });
+    ASSERT(client, return false);
+    ASSERT(!client->is_connected, return false);
 
     int result = connect(client->local_node->sock, client->addr_ptr->ai_addr, 
         (int)client->addr_ptr->ai_addrlen);
@@ -154,8 +156,8 @@ bool client_connect(struct bulb_client* client)
 // connects to a server. Returns false on error.
 bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinfo)
 {
-    ASSERT(client, { return false; });
-    ASSERT(client->is_connected, { return false; });
+    ASSERT(client, return false);
+    ASSERT(client->is_connected, return false);
     
     ASSERT(strlen(userinfo.name) > 0, 
     { 
@@ -171,20 +173,24 @@ bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinf
         return false; 
     }, "The server connection has closed unexpectedly.\n");
 
+    client->local_node->userinfo = quick_malloc(sizeof(struct userinfo_obj));
+    memcpy(client->local_node->userinfo, &userinfo, sizeof(struct userinfo_obj));
+
     return true;
 }
 
 // Free a client instance.
 void client_free(struct bulb_client* client)
 {
-    ASSERT(client, { return; });
+    ASSERT(client, return);
 #if WIN32
     WSACleanup();
 #endif
 
     // If the bulb_client instance is being freed from memory, the entire client
     // connection is being terminated. Thus, every single client node should
-    // also be cleaned up in the process.
+    // also be cleaned up in the process. This also cleans up the current client's
+    // client_node object respectively.
     server_disconnect_all_clients(&client->server_node);
 
     if (client->addr_ptr != NULL)

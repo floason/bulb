@@ -42,9 +42,9 @@ int main()
 
     // Instantiate and connect the new client instance.
     struct bulb_client* client = client_init(hostname, port, NULL);
-    ASSERT(client, { return 1; });
+    ASSERT(client, return 1);
     client_set_exception_handler(client, _client_exception_handler);
-    ASSERT(client_connect(client), { goto fail; });
+    ASSERT(client_connect(client), goto fail);
 
     // Get the player username and strip the newline character. The max username length is 
     // MAX_NAME_LENGTH, so + 3 accomodates the \n and NUL character afterwards and also 
@@ -62,7 +62,7 @@ int main()
     // Authenticate the user connection.
     struct userinfo_obj userinfo = { };
     strcpy(userinfo.name, username);
-    ASSERT(client_authenticate(client, userinfo), { goto fail; }, "Could not authenticate user %s!", 
+    ASSERT(client_authenticate(client, userinfo), goto fail, "Could not authenticate user %s!", 
         username);
 
     // Busy-wait on the main thread so that the client thread doesn't terminated prematurely.
