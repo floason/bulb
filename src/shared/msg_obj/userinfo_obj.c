@@ -65,13 +65,14 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         snprintf(buffer, sizeof(buffer), "Client \"%s\" has connected\n", client->userinfo->name);
         stdout_obj_write(node->sock, buffer);
     });
+    connect_obj_write(client->sock, NULL, true);
     printf("Client \"%s\" (%s) has connected\n", client->userinfo->name, ip_str);
 
     // Synchronise the client list on each client.
     LOOP_CLIENTS(server->clients, client, node, 
     {
-        connect_obj_write(client->sock, node->userinfo);
-        connect_obj_write(node->sock, client->userinfo);
+        connect_obj_write(client->sock, node->userinfo, false);
+        connect_obj_write(node->sock, client->userinfo, false);
     });
     
     return;

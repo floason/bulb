@@ -6,7 +6,6 @@
 #include "unisock.h"
 #include "server_node.h"
 #include "client_node.h"
-#include "bulb_obj.h"
 #include "stdout_obj.h"
 
 // Read a stdout_obj. Returns NULL on failure.

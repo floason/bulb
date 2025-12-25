@@ -7,9 +7,8 @@
 
 #pragma once
 
-#define MAX_NAME_LENGTH 32  // Does not include the NUL character.
-
 #include "unisock.h"
+#include "bulb_macros.h"
 #include "server_node.h"
 #include "client_node.h"
 #include "bulb_obj.h"

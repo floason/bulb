@@ -47,7 +47,7 @@ int main()
     ASSERT(client_connect(client), goto fail);
 
     // Get the player username and strip the newline character. The max username length is 
-    // MAX_NAME_LENGTH, so + 3 accomodates the \n and NUL character afterwards and also 
+    // MAX_NAME_LENGTH, so + 3 accomodates the \n and NUL characters afterwards and also 
     // allows the client code to report to the user whether the username is too long.
     char username[MAX_NAME_LENGTH + 3];
     printf("%s", "Username: ");
@@ -65,15 +65,20 @@ int main()
     ASSERT(client_authenticate(client, userinfo), goto fail, "Could not authenticate user %s!", 
         username);
 
-    // Busy-wait on the main thread so that the client thread doesn't terminated prematurely.
-    // The main thread sleeps so that task scheduling does not prioritise this thread.
-    for (;;) 
-    { 
-#if defined WIN32
-        Sleep(1000);
-#elif defined __UNIX__
-        sleep(1);
-#endif
+    // Wait for user input.
+    for (;;)
+    {
+        // Stall while the user connection has not been authenticated.
+        while (!client_ready(client));
+
+        // Get the message to input and strip the newline character. The max message length
+        // is MAX_MESSAGE_LENGTH, so + 2 accomodates the \n and NUL characters afterwards.
+        char message[MAX_MESSAGE_LENGTH + 2];
+        printf("%s: ", username);
+        fgets(message, sizeof(message), stdin);
+        message[strlen(message) - 1] = '\0';
+
+        client_input(client, message);
     }
 
     client_free(client);

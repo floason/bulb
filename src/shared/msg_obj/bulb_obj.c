@@ -15,7 +15,7 @@ struct bulb_obj* bulb_obj_template_recv(SOCKET sock, struct bulb_obj* header)
     {
         int read = recv(sock, buffer, min(header->size - offset, sizeof(buffer)), 0);
         ASSERT(read != SOCKET_ERROR, return NULL, "Socket error during bulb_obj_template_recv()\n");
-        memcpy(obj, buffer + offset, read);
+        memcpy((char*)obj + offset, buffer, read);
         offset += read;
     } while (header->size > offset);
     return obj;

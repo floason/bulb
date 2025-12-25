@@ -19,7 +19,8 @@ enum bulb_obj_type
     BULB_STDOUT,
     BULB_USERINFO,
     BULB_CONNECT,
-    BULB_DISCONNECT
+    BULB_DISCONNECT,
+    BULB_MESSAGE
 };
 
 struct bulb_obj

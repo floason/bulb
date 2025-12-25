@@ -8,6 +8,9 @@
 #include <stdbool.h>
 
 #include "unisock.h"
+#include "bulb_macros.h"
+#include "server_node.h"
+#include "client_node.h"
 #include "bulb_obj.h"
 #include "userinfo_obj.h"
 

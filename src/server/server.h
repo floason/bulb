@@ -5,6 +5,7 @@
 #include <threads.h>
 
 #include "unisock.h"
+#include "bulb_macros.h"
 #include "server_node.h"
 
 struct bulb_server;

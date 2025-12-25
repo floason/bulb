@@ -8,6 +8,7 @@
 #include "obj_reader.h"
 #include "obj_process.h"
 #include "userinfo_obj.h"
+#include "message_obj.h"
 
 // Start handling a non-critical error.
 static bool _client_handle_non_critical_error(struct bulb_client* client, 
@@ -177,6 +178,19 @@ bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinf
     memcpy(client->local_node->userinfo, &userinfo, sizeof(struct userinfo_obj));
 
     return true;
+}
+
+// Is the client ready for communication?
+bool client_ready(struct bulb_client* client)
+{
+    ASSERT(client, return false);
+    return client->local_node->validated;
+}
+
+// Process client input. TODO: commands
+void client_input(struct bulb_client* client, const char* msg)
+{
+    message_obj_write(client->local_node->sock, msg);
 }
 
 // Free a client instance.

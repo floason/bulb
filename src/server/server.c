@@ -69,19 +69,6 @@ static int _server_client_thread(void* c)
             server_disconnect_client(server, client);
             return 0;
         }
-
-        // TODO: remove
-        /*
-#if defined WIN32
-        Sleep(5000);
-#elif defined __UNIX__
-        sleep(5);
-#endif
-
-        stdout_obj_write(client->sock, "u were kicked soz lols!!!\n");
-        server_disconnect_client(server, client);
-        return 0;
-        */
     }
 }
 

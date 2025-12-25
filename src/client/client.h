@@ -6,6 +6,7 @@
 #include <stdbool.h>
 
 #include "unisock.h"
+#include "bulb_macros.h"
 #include "server_node.h"
 #include "userinfo_obj.h"
 
@@ -64,6 +65,12 @@ bool client_connect(struct bulb_client* client);
 // Authenticate the user's connection. This must be called after the client successfully
 // connects to a server. Returns false on error.
 bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinfo);
+
+// Is the client ready for communication?
+bool client_ready(struct bulb_client* client);
+
+// Process client ipnut.
+void client_input(struct bulb_client* client, const char* msg);
 
 // Free a client instance.
 void client_free(struct bulb_client* client);
