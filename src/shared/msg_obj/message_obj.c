@@ -3,6 +3,9 @@
 
 // This object is used for sending a message to other clients, through the server.
 
+#include <stdbool.h>
+#include <stddef.h>
+
 #include "unisock.h"
 #include "bulb_macros.h"
 #include "server_node.h"
@@ -12,9 +15,9 @@
 #include "message_obj.h"
 
 // Read a message_obj object. Returns NULL on failure.
-struct bulb_obj* message_obj_read(SOCKET sock, struct bulb_obj* header)
+struct bulb_obj* message_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size)
 {
-    return bulb_obj_template_recv(sock, header);
+    return bulb_obj_template_recv(sock, header, min_size);
 }
 
 // Write a message_obj object. Returns false on failure.

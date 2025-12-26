@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "unisock.h"
+#include "bulb_version.h"
 #include "client.h"
 #include "obj_reader.h"
 #include "obj_process.h"
@@ -168,6 +169,9 @@ bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinf
 
     userinfo.base.type = BULB_USERINFO;
     userinfo.base.size = sizeof(userinfo);
+    userinfo.major = MAJOR;
+    userinfo.minor = MINOR;
+    userinfo.patch = PATCH;
     ASSERT(userinfo_obj_write(client->local_node->sock, &userinfo), 
     { 
         client->error_state = CLIENT_AUTH_FAIL;

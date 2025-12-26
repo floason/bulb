@@ -1,13 +1,18 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
+#include <stdbool.h>
+#include <stddef.h>
+
 #include "unisock.h"
 #include "bulb_obj.h"
 
 // This is a basic template for reading a Bulb object that has no additional reading
 // requirements. Returns NULL on failure.
-struct bulb_obj* bulb_obj_template_recv(SOCKET sock, struct bulb_obj* header)
-{
+struct bulb_obj* bulb_obj_template_recv(SOCKET sock, struct bulb_obj* header, size_t min_size)
+{    
+    // Read the socket stream into a buffer and copy its contents into a dynamically
+    // allocated object. This is the standard method for reading objects.
     char buffer[RECV_BUFFER_SIZE];
     struct bulb_obj* obj = quick_malloc(header->size);
     size_t offset = 0;
@@ -18,6 +23,15 @@ struct bulb_obj* bulb_obj_template_recv(SOCKET sock, struct bulb_obj* header)
         memcpy((char*)obj + offset, buffer, read);
         offset += read;
     } while (header->size > offset);
+
+    // If the current offset is below the minimum size required, the object must be
+    // immediately invalidated as using it can result in a segmentation fault.
+    if (offset < min_size)
+    {
+        free(obj);
+        return NULL;
+    }
+
     return obj;
 }
 

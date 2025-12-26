@@ -7,6 +7,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "unisock.h"
 #include "server_node.h"
@@ -22,7 +23,7 @@ struct connect_obj
 };
 
 // Read a connect_obj object. Returns NULL on failure.
-struct bulb_obj* connect_obj_read(SOCKET sock, struct bulb_obj* header);
+struct bulb_obj* connect_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size);
 
 // Write a connect_obj object. userinfo can be NULL if validate_only is true. 
 // Returns false on failure.

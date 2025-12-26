@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "unisock.h"
 #include "bulb_macros.h"
@@ -21,7 +22,7 @@ struct disconnect_obj
 };
 
 // Read a disconnect_obj object. Returns NULL on failure.
-struct bulb_obj* disconnect_obj_read(SOCKET sock, struct bulb_obj* header);
+struct bulb_obj* disconnect_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size);
 
 // Write a disconnect_obj object. Returns false on failure.
 bool disconnect_obj_write(SOCKET sock, const char* name);

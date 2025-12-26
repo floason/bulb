@@ -3,15 +3,22 @@
 
 // This object is used for writing a buffer to stdout.
 
+#include <stdbool.h>
+#include <stddef.h>
+
 #include "unisock.h"
 #include "server_node.h"
 #include "client_node.h"
 #include "stdout_obj.h"
 
 // Read a stdout_obj. Returns NULL on failure.
-struct bulb_obj* stdout_obj_read(SOCKET sock, struct bulb_obj* header)
+struct bulb_obj* stdout_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size)
 {
-    return bulb_obj_template_recv(sock, header);
+    struct stdout_obj* obj = (struct stdout_obj*)bulb_obj_template_recv(sock, header, min_size);
+    if (obj == NULL)
+        return NULL;
+    obj->buffer[header->size - 1] = '\0';
+    return (struct bulb_obj*)obj;
 }
 
 // Write a stdout_obj object. Returns false on failure.

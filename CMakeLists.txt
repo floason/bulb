@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(bulb LANGUAGES C VERSION 0.0.0)
+project(bulb LANGUAGES C VERSION 0.0.1)
 
 add_library(bulb_interface INTERFACE)
 target_compile_features(bulb_interface INTERFACE c_std_11)

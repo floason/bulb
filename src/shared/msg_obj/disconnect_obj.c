@@ -3,6 +3,8 @@
 
 // This object is used for reporting a disconnecting client to other clients.
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "unisock.h"
@@ -11,9 +13,9 @@
 #include "userinfo_obj.h"
 
 // Read a disconnect_obj object. Returns NULL on failure.
-struct bulb_obj* disconnect_obj_read(SOCKET sock, struct bulb_obj* header)
+struct bulb_obj* disconnect_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size)
 {
-    return bulb_obj_template_recv(sock, header);
+    return bulb_obj_template_recv(sock, header, min_size);
 }
 
 // Write a disconnect_obj object. Returns false on failure.

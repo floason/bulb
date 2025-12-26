@@ -42,21 +42,27 @@ struct bulb_obj* bulb_obj_read(SOCKET sock, bool* socket_closed)
         return NULL;
     }
     
+    // A switch table is used to select the exact read function to use for reading the
+    // given object from the given socket stream. The size of each object is passed
+    // as a parameter to each non-default object, in order to validate against
+    // objects that could crash the server from invalid clients.
     struct bulb_obj* header = (struct bulb_obj*)buffer;
     switch (header->type)
     {
         case BULB_OBJ:
             return _bulb_obj_read(sock, header);
         case BULB_STDOUT:
-            return stdout_obj_read(sock, header);
+            // + 1 is added to the minimum size to provide buffer space for the NUL
+            // character.
+            return stdout_obj_read(sock, header, sizeof(struct stdout_obj) + 1);
         case BULB_USERINFO:
-            return userinfo_obj_read(sock, header);
+            return userinfo_obj_read(sock, header, sizeof(struct userinfo_obj));
         case BULB_CONNECT:
-            return connect_obj_read(sock, header);
+            return connect_obj_read(sock, header, sizeof(struct connect_obj));
         case BULB_DISCONNECT:
-            return disconnect_obj_read(sock, header);
+            return disconnect_obj_read(sock, header, sizeof(struct disconnect_obj));
         case BULB_MESSAGE:
-            return message_obj_read(sock, header);
+            return message_obj_read(sock, header, sizeof(struct message_obj));
         default:
             ASSERT(false, return NULL, "Invalid obj type %d\n", header->type);
     }

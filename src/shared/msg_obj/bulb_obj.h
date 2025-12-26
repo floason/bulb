@@ -31,7 +31,7 @@ struct bulb_obj
 
 // This is a basic template for reading a Bulb object that has no additional reading
 // requirements. Returns NULL on failure.
-struct bulb_obj* bulb_obj_template_recv(SOCKET sock, struct bulb_obj* header);
+struct bulb_obj* bulb_obj_template_recv(SOCKET sock, struct bulb_obj* header, size_t min_size);
 
 // Send a Bulb object of an arbitrary type to a socket stream. Returns false on failure.
 bool bulb_obj_write(SOCKET sock, struct bulb_obj* obj);

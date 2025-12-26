@@ -4,15 +4,18 @@
 // This object is used for synchronising a new client connection for each client.
 // It is also used for validating a client that just connected.
 
+#include <stdbool.h>
+#include <stddef.h>
+
 #include "unisock.h"
 #include "connect_obj.h"
 #include "userinfo_obj.h"
 #include "server_node.h"
 
 // Read a connect_obj object. Returns NULL on failure.
-struct bulb_obj* connect_obj_read(SOCKET sock, struct bulb_obj* header)
+struct bulb_obj* connect_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size)
 {
-    return bulb_obj_template_recv(sock, header);
+    return bulb_obj_template_recv(sock, header, min_size);
 }
 
 // Write a connect_obj object. userinfo can be NULL if validate_only is true. 
