@@ -19,6 +19,7 @@ enum client_error_state
     CLIENT_OK,
 
     // Errors that do not disrupt the client instance.
+    CLIENT_PRINT_MESSAGE,       // data is char*
 
     // Client disconnect that results in the client thread being ended.
     CLIENT_DISCONNECT, 
@@ -31,6 +32,7 @@ enum client_error_state
     CLIENT_AUTH_FAIL
 };
 
+// Return false to hint critical fault to the client.
 typedef bool (*client_exception_func)(struct bulb_client* client, 
                                       enum client_error_state error, 
                                       bool fatal, 

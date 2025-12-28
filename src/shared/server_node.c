@@ -6,7 +6,11 @@
 #include "unisock.h"
 #include "server_node.h"
 #include "userinfo_obj.h"
-#include "disconnect_obj.h"
+
+#ifdef SERVER
+#   include "disconnect_obj.h"
+#   include "stdout_obj.h"
+#endif
 
 // Close and free a client node.
 static void _client_close(struct client_node* client)
@@ -56,12 +60,21 @@ void server_disconnect_client(struct server_node* server, struct client_node* cl
     if (!client->delete)
     {
         if (client->userinfo)
+        {
             printf("Client \"%s\" (%s) has disconnected\n", client->userinfo->name, ip_str);
+
+            // The server reports this to clients, rather than simply printing this on each
+            // client, so that I don't have to re-implement the same code used with stdout_obj
+            // that allows client code to format console output properly.
+            char buffer[64 + MAX_NAME_LENGTH];
+            snprintf(buffer, sizeof(buffer), "Client \"%s\" has disconnected\n",
+                client->userinfo->name);
+            LOOP_CLIENTS(server->clients, client, node, 
+                stdout_obj_write(node->sock, buffer));
+        }
         else
             fprintf(stderr, "Client from address %s failed to connect\n", ip_str);
     }
-#else
-    printf("Client \"%s\" has disconnected\n", client->userinfo->name);
 #endif
 
     if (client->prev)

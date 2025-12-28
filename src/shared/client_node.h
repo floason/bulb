@@ -10,6 +10,7 @@
 #include <threads.h>
 
 #include "unisock.h"
+#include "bulb_macros.h"
 
 struct userinfo_obj;
 

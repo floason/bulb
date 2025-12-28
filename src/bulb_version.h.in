@@ -3,6 +3,13 @@
 
 #pragma once
 
+#include <stdio.h>
+
 #define MAJOR @bulb_VERSION_MAJOR@
 #define MINOR @bulb_VERSION_MINOR@
 #define PATCH @bulb_VERSION_PATCH@
+
+static inline void bulb_printver()
+{
+    printf("Bulb v%d.%d.%d\n", MAJOR, MINOR, PATCH);
+}

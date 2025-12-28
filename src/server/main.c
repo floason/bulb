@@ -1,6 +1,9 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
+#include <stdio.h>
+
+#include "bulb_version.h"
 #include "server.h"
 
 static bool _server_exception_handler(struct bulb_server* server, 
@@ -22,6 +25,9 @@ static bool _server_exception_handler(struct bulb_server* server,
 
 int main()
 {
+    printf("[SERVER] ");
+    bulb_printver();
+
     // TODO: try probing successive ports on SERVER_ADDRESS_FAIL
     struct bulb_server* server = server_init(STR(FIRST_PORT), NULL);
     ASSERT(server, return 1);

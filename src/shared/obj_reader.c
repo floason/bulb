@@ -1,6 +1,8 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
+#include <string.h>
+
 #include "unisock.h"
 #include "obj_reader.h"
 #include "stdout_obj.h"

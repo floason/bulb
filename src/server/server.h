@@ -28,6 +28,7 @@ enum server_error_state
     SERVER_LISTEN_SOCKET_FAIL,
 };
 
+// Return false to hint critical fault to the server.
 typedef bool (*server_exception_func)(struct bulb_server* server, 
                                       enum server_error_state error, 
                                       bool fatal, 

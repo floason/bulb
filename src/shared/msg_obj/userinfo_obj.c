@@ -84,7 +84,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     client->validated = true;
     LOOP_CLIENTS(server->clients, NULL, node,
     {
-        char buffer[256];
+        char buffer[64 + MAX_NAME_LENGTH];
         snprintf(buffer, sizeof(buffer), "Client \"%s\" has connected\n", client->userinfo->name);
         stdout_obj_write(node->sock, buffer);
     });

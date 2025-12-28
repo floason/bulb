@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "unisock.h"
 #include "bulb_obj.h"
@@ -18,7 +19,7 @@ struct bulb_obj* bulb_obj_template_recv(SOCKET sock, struct bulb_obj* header, si
     size_t offset = 0;
     do
     {
-        int read = recv(sock, buffer, min(header->size - offset, sizeof(buffer)), 0);
+        int read = recv(sock, buffer, MIN(header->size - offset, sizeof(buffer)), 0);
         ASSERT(read != SOCKET_ERROR, return NULL, "Socket error during bulb_obj_template_recv()\n");
         memcpy((char*)obj + offset, buffer, read);
         offset += read;
@@ -41,7 +42,8 @@ bool bulb_obj_write(SOCKET sock, struct bulb_obj* obj)
     size_t remaining = obj->size;
     do
     {
-        int written = send(sock, (const char*)obj, min(remaining, RECV_BUFFER_SIZE), 0);
+        int written = send(sock, (const char*)obj + (obj->size - remaining), 
+            MIN(remaining, RECV_BUFFER_SIZE), 0);
         if (written == SOCKET_ERROR)
             return false;
         remaining -= written;

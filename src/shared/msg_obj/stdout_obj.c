@@ -5,11 +5,17 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "unisock.h"
 #include "server_node.h"
 #include "client_node.h"
 #include "stdout_obj.h"
+#include "userinfo_obj.h"
+
+#ifdef CLIENT
+#   include "client.h"
+#endif
 
 // Read a stdout_obj. Returns NULL on failure.
 struct bulb_obj* stdout_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size)
@@ -17,7 +23,7 @@ struct bulb_obj* stdout_obj_read(SOCKET sock, struct bulb_obj* header, size_t mi
     struct stdout_obj* obj = (struct stdout_obj*)bulb_obj_template_recv(sock, header, min_size);
     if (obj == NULL)
         return NULL;
-    obj->buffer[header->size - 1] = '\0';
+    obj->buffer[header->size - sizeof(struct stdout_obj) - 1] = '\0';
     return (struct bulb_obj*)obj;
 }
 
@@ -44,6 +50,16 @@ bool stdout_obj_write(SOCKET sock, const char* msg)
 // Process a stdout_obj object.
 void stdout_obj_process(struct stdout_obj* obj, struct server_node* server, struct client_node* client)
 {
+#ifdef CLIENT
+    if (client->bulb_client->exception_handler != NULL)
+    {
+        client->bulb_client->exception_handler(client->bulb_client, CLIENT_PRINT_MESSAGE, false, 
+            (void*)&obj->buffer);
+    }
+    else
+        printf("%s", obj->buffer);
+#else
     printf("%s", obj->buffer);
+#endif
     free(obj);
 }
