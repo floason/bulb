@@ -1,11 +1,14 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
-// Some of the code in this header feels a bit rough, but it works, for now.
+// Internal documentation:
+// - Console co-ordinates on Windows start from (0, 0), however when using ANSI
+//   sequences, they should be expected to start from (1, 1) instead.
 
 #pragma once
 
 #include <stdbool.h>
+#include <ctype.h>
 
 #include "util.h"
 
@@ -18,12 +21,20 @@
     static DWORD stdout_mode;
     static DWORD stdin_mode;
 #elif defined __UNIX__
-    #include <ncurses.h>
+#   include <unistd.h>
+#   include <poll.h>
+#   include <termios.h>
+
+    static struct termios stdin_mode;
 #endif
 
-int console_io_cached_columns = -1;
-const char* console_io_input_buffer = NULL;
-const char* console_io_input_prepend = NULL;
+#define STDIN_EMPTY -2
+
+// Used with get_console_cursor_pos() on POSIX.
+static bool block_read_stdin_char = false;
+static char pre_esc_buffer[16];
+static unsigned pre_esc_buffer_r = 0;
+static unsigned pre_esc_buffer_w = 0;
 
 // Enable ANSI escape sequences. Returns false on failure.
 static inline bool enable_ansi_sequences()
@@ -43,34 +54,15 @@ static inline bool enable_ansi_sequences()
     ASSERT(false, return false, "Operating system not supported!\n");
 }
 
-// Clean the entire screen. This should only be called before disable_line_buffering().
+// Clean the entire screen.
 static inline void printf_clear_screen()
 {
-    printf("\x1B[2J\x1B[3J\x1B[0;0H");
-}
-
-// Cache the number of columns of the current console, only after disabling 
-// line input! Returns false on failure.
-static inline bool cache_console_columns()
-{
-#if defined WIN32
-    CONSOLE_SCREEN_BUFFER_INFO info;
-    ASSERT(GetConsoleScreenBufferInfo(stdout_handle, &info), return false,
-        "Failed to get console info: %d\n", GetLastError());
-
-    console_io_cached_columns = info.srWindow.Right - info.srWindow.Left + 1;
-    return true;
-#elif defined __UNIX__
-    int _y;
-    getmaxyx(stdscr, _y, console_io_cached_columns);
-    return true;
-#endif
-
-    ASSERT(false, return false, "Operating system not supported!\n");
+    printf("\x1B[2J\x1B[3J\x1B[1;1H");
 }
 
 // Windows: disables ENABLE_LINE_INPUT, which disables line buffering.
-// Linux: initializes ncurses
+// Linux: disables canonical mode and console echo on input, which
+// disables line buffering. Output buffering is also disabled.
 // Returns false on failure.
 static inline bool disable_line_buffering()
 {
@@ -82,15 +74,15 @@ static inline bool disable_line_buffering()
         return false, "Failed to disable line input: %d\n", GetLastError());
     return true;
 #elif defined __UNIX__
-    // Initialize ncurses.
-    initscr();
-    cbreak();                           // Disable line buffering.
-    keypad(stdscr, true);               // Enable function keys.
-    noecho();                           // Disable character echoing.
-    scrollok(stdscr, true);             // Allow scrolling.
-    //mousemask(ALL_MOUSE_EVENTS, NULL);  // Enable mouse events. TODO: SCROLLBACK
-    
-    cache_console_columns();
+    struct termios temp;
+    tcgetattr(STDIN_FILENO, &stdin_mode);
+    memcpy(&temp, &stdin_mode, sizeof(temp));
+    temp.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &temp);
+
+    // Also disable stdout buffering.
+    setbuf(stdout, NULL);
+
     return true;
 #endif
 
@@ -100,19 +92,20 @@ static inline bool disable_line_buffering()
 // Get the key used for backspace, only after disabling line input!
 static inline int get_console_backspace_key()
 {
-#if defined WIN32
-    return '\b';
-#elif defined __UNIX__
-    return KEY_BACKSPACE;
+#if defined __UNIX__
+    return stdin_mode.c_cc[VERASE];
 #endif
 
-    ASSERT(false, return '\0', "Operating system not supported!\n");
+    return '\b';
 }
 
 // Get the current console cursor position (starting from 0, 0), only after
 // disabling line input! Returns false on failure.
 static inline bool get_console_cursor_pos(unsigned* x, unsigned* y)
 {
+    ASSERT(x, return false);
+    ASSERT(y, return false);
+
 #if defined WIN32
     CONSOLE_SCREEN_BUFFER_INFO info;
     ASSERT(GetConsoleScreenBufferInfo(stdout_handle, &info), return false, 
@@ -121,40 +114,66 @@ static inline bool get_console_cursor_pos(unsigned* x, unsigned* y)
     *y = info.dwCursorPosition.Y;
     return true;
 #elif defined __UNIX__
-    int ncurses_x;
-    int ncurses_y;
-    getyx(stdscr, ncurses_y, ncurses_x);
-    *x = ncurses_x;
-    *y = ncurses_y;
+    // Send Device Status Report (DSR) ANSI sequence.
+    block_read_stdin_char = true;
+    printf("\x1B[6n");
+
+    // If there's anything to be read before ESC, feed it into the
+    // pre_esc_buffer queue. The buffer can only fit 16 characters, but
+    // genuine clients should realistically not even be filling it beyond
+    // a character or two.
+    char c;
+    while ((c = getchar()) != '\x1B')
+        pre_esc_buffer[(pre_esc_buffer_w = (pre_esc_buffer_w + 1) % sizeof(pre_esc_buffer))] = c;
+
+    // Read back the current terminal cursor position. This is sent to
+    // stdin as ESC[#;#R (first # is row, second # is column)
+    char num_buffer[6] = { 0 }; // Assumes pos is capped from 0-65535.
+    while ((c = getchar()) != 'R')
+    {
+        int len = strlen(num_buffer);
+        if (isdigit(c) && len < sizeof(num_buffer) - 1)
+            num_buffer[len] = c;
+        else if (len > 0)
+        {
+            *y = atoi(num_buffer) - 1;
+            memset(num_buffer, '\0', sizeof(num_buffer));
+        }
+    }
+    *x = atoi(num_buffer) - 1;
+
+    block_read_stdin_char = false;
     return true;
 #endif
     
     ASSERT(false, return false, "Operating system not supported!\n");
 }
 
-// Get the number of lines a string would fit in the current console window,
-// only after disabling line input! Set force_columns to 0 for automatic
-// console column length detection. Returns false on failure.
-static inline bool get_num_lines_for_console(unsigned str_length, unsigned* lines, int force_columns)
+// Get the number of columns per console row, only after disabling line input!
+// Returns -1 on failure.
+static inline int get_num_columns_for_console()
 {
 #if defined WIN32
     CONSOLE_SCREEN_BUFFER_INFO info;
     ASSERT(GetConsoleScreenBufferInfo(stdout_handle, &info), return false,
         "Failed to get console info: %d\n", GetLastError());
 
-    *lines = str_length / (info.srWindow.Right - info.srWindow.Left + 1) + 1;
-    return true;
+    return info.srWindow.Right - info.srWindow.Left + 1;
 #elif defined __UNIX__
-    int rows = 0;
-    int columns = force_columns;
-    if (columns <= 0)
-        getmaxyx(stdscr, rows, columns);
-    
-    *lines = str_length / columns + 1;
-    return true;
+    // There isn't any direct ANSI sequence for retrieving a terminal's size,
+    // however we can position the cursor at an unrealistic distance away from
+    // the start, and assuming the terminal clamps the cursor position, we
+    // can utilise this information instead.
+    int cached_x, cached_y;
+    int max_columns, throwaway_y;
+    get_console_cursor_pos(&cached_x, &cached_y);
+    printf("\x1B[%d;65535H", cached_y + 1);
+    get_console_cursor_pos(&max_columns, &throwaway_y);
+    printf("\x1B[%d;%dH", cached_y + 1, cached_x + 1);
+    return max_columns;
 #endif
-    
-    ASSERT(false, return false, "Operating system not supported!\n");
+
+    ASSERT(false, return -1, "Operating system not supported!\n");
 }
 
 // Clear the last written character, only after disabling line input!
@@ -183,28 +202,17 @@ static inline bool clear_last_character()
 
     return true;
 #elif defined __UNIX__
-    int cur_x = getcurx(stdscr);
-    if (cur_x == 0)
+    int cached_x, cached_y;
+    get_console_cursor_pos(&cached_x, &cached_y);
+    if (cached_x == 0)
     {
-        int rows;
-        int columns;
-        getmaxyx(stdscr, rows, columns);
-
-        int new_x = columns - 1;
-        int new_y = getcury(stdscr) - 1;
-        move(new_y, new_x);
-        addch(' ');
-        move(new_y, new_x);
+        int max_columns = get_num_columns_for_console();
+        printf("\x1B[%d;%dH", cached_y, max_columns + 1);
+        printf(" ");
+        printf("\x1B[%d;%dH", cached_y, max_columns + 1);
     }
     else
-    {
-        int new_x = cur_x - 1;
-        int cur_y = getcury(stdscr);
-        move(cur_y, new_x);
-        addch(' ');
-        move(cur_y, new_x);
-    }
-
+        printf("\b \b");
     return true;
 #endif
 
@@ -231,53 +239,14 @@ static inline bool clear_lines_from_y(unsigned y_pos, unsigned count)
     
     return true;
 #elif defined __UNIX__
-    int rows;
-    int columns;
-    getmaxyx(stdscr, rows, columns);
-
-    move(y_pos, 0);
-    printw("%*c", columns * count, '\0');
-    refresh();
-    move(y_pos, 0);
-
+    printf("\x1B[%d;1H", y_pos + count);
+    for (int i = 0; i < count - 1; ++i)
+        printf("\x1B[2K\x1B[A");
+    printf("\x1B[2K");
     return true;
 #endif
 
     ASSERT(false, return false, "Operating system not supported!\n");
-}
-
-// Write a character to stdout, only after disabling line input!
-// Returns false only on unsupported operating system.
-static inline bool write_stdout_char(char c)
-{
-#if defined WIN32
-    putc(c, stdout);
-    return true;
-#elif defined __UNIX__
-    addch(c);
-    refresh();
-    return true;
-#endif
-
-    ASSERT(false, return false, "Operating system not supported!\n");
-}
-
-// Print a formatted string to stdout, only after disabling line input!
-// Returns false only on unsupported operating system.
-static inline bool write_stdout_fstring(const char* fmt, ...)
-{
-    va_list argv;
-    va_start(argv, fmt);
-#if defined WIN32
-    vprintf(fmt, argv);
-#elif defined __UNIX__
-    vw_printw(stdscr, fmt, argv);
-    refresh();
-#else
-    ASSERT(false, return false, "Operating system not supported!\n");
-#endif
-    va_end(argv);
-    return true;
 }
 
 // Read each character separately from stdin, only after disabling line input!
@@ -285,56 +254,37 @@ static inline bool write_stdout_fstring(const char* fmt, ...)
 static inline int read_stdin_char()
 {
 #if defined WIN32
-    for (;;)
-    {
-        INPUT_RECORD record;
-        DWORD num_events;
-        ASSERT(ReadConsoleInputA(stdin_handle, &record, 1, &num_events), return '\0',
-            "Failed to read a character: %d\n", GetLastError());
-        if (record.EventType == KEY_EVENT && record.Event.KeyEvent.bKeyDown)
-            return record.Event.KeyEvent.uChar.AsciiChar;
-    }
+    char c;
+    ASSERT(ReadFile(stdin_handle, &c, 1, NULL, NULL), return '\0',
+        "Failed to read a character: %d\n", GetLastError());
+    return c;
 #elif defined __UNIX__
-    for (;;)
-    {
-        int c = getch();
-        switch (c)
-        {
-            // Handle console resize. TODO: consider entire screen when scrollback
-            // implemented
-            case KEY_RESIZE:
-            {
-                if (console_io_input_buffer != NULL)
-                {
-                    // Get the length of the entire input text to clear.
-                    size_t len = strlen(console_io_input_buffer);
-                    if (console_io_input_prepend != NULL)
-                        len += strlen(console_io_input_prepend);
+    // This code is written to work alongside get_console_cursor_pos() on Linux,
+    // which (at least in my Bulb client main.c code) is called in an
+    // asynchronous thread to that containing the main loop that processes user
+    // input, which obviously also reads stdin as ESC[6n responds with the
+    // current console cursor position using stdin.
 
-                    // Clear the current drawn input buffer. 
-                    unsigned lines;
-                    get_num_lines_for_console(len, &lines, console_io_cached_columns);
-                    clear_lines_from_y(getcury(stdscr) - lines + 1, lines);
-
-                    // Print the input buffer again.
-                    if (console_io_input_prepend != NULL)
-                        write_stdout_fstring("%s%s", console_io_input_prepend, console_io_input_buffer);
-                    else
-                        write_stdout_fstring("%s", console_io_input_buffer);
-
-                    // Cache the new terminal columns length.
-                    cache_console_columns();
-                }
-            }
-
-            // TODO: scrollback in the future
-            case KEY_MOUSE:
-                break;
-
-            default:
-                return c;
-        }
-    }
+    // If the pre_esc_buffer queue has been filled by get_console_cursor_pos(),
+    // prioritise that first.
+    if (pre_esc_buffer_r != pre_esc_buffer_w)
+        return pre_esc_buffer[(pre_esc_buffer_r = (pre_esc_buffer_r + 1) % sizeof(pre_esc_buffer))];
+    
+    // Otherwise, we need to read directly from stdin. If get_console_cursor_pos()
+    // is currently executing, stop for now.
+    if (block_read_stdin_char)
+        return STDIN_EMPTY;
+    
+    // Now actually try reading from stdin, however this code should time out
+    // immediately so as to not stall on waiting for a character to appear in
+    // stdin.
+    struct pollfd pfd;
+    pfd.fd = STDIN_FILENO;
+    pfd.events = POLLIN;
+    if (poll(&pfd, 1, 0) > 0)
+        return getchar();
+    else
+        return STDIN_EMPTY;
 #endif
 
     ASSERT(false, return '\0', "Operating system not supported!\n");
@@ -349,7 +299,7 @@ static inline bool cleanup_console_mode()
     SetConsoleMode(stdin_handle, stdin_mode);
     return true;
 #elif defined __UNIX__
-    endwin();
+    tcsetattr(STDIN_FILENO, TCSANOW, &stdin_mode);
     return true;
 #endif
 

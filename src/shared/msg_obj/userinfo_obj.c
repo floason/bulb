@@ -59,8 +59,8 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
 
         // Report the invalid version of the connecting client to the server 
         // console.
-        fprintf(stderr, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d, however the " \
-            "server expects version %d.%d.%d\n", client->userinfo->name, ip_str, obj->major, obj->minor, 
+        fprintf(stderr, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d (server " \
+            "expects version %d.%d.%d\n", client->userinfo->name, ip_str, obj->major, obj->minor, 
             obj->patch, MAJOR, MINOR, PATCH);
 
         client->delete = true;

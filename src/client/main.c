@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include "bulb_version.h"
-#include "client.h"     // MUST BE INCLUED BEFORE "console_io.h"!
+#include "client.h"         // MUST BE INCLUED BEFORE "console_io.h"!
 #include "console_io.h"
 
 static char input_buffer[MAX_MESSAGE_LENGTH + 1] = { };
@@ -15,8 +15,8 @@ static bool waiting_for_input = false;
 
 static void _cleanup(struct bulb_client* client)
 {
-    client_free(client);
     cleanup_console_mode();
+    client_free(client);
 }
 
 static bool _client_exception_handler(struct bulb_client* client, 
@@ -46,20 +46,18 @@ static bool _client_exception_handler(struct bulb_client* client,
             get_console_cursor_pos(&cursor_x, &cursor_y);
             if (waiting_for_input)
             {
-                unsigned lines;
-                get_num_lines_for_console(line_length, &lines, 0);
+                int lines = line_length / get_num_columns_for_console() + 1;
                 clear_lines_from_y(cursor_y - lines + 1, lines);
             }
 
-            // Always print the message first. It should be terminated with a newline.
+            // Always print the message first, which should already be terminated with a newline.
             char* message = (char*)data;
-            write_stdout_fstring("%s", message);
+            printf("%s", message);
 
             // If we had to do some console cleanup beforehand, print the current 
             // input buffer again.
             if (waiting_for_input)
-                write_stdout_fstring("%s: %s", client->local_node->userinfo->name, input_buffer);
-
+                printf("%s: %s", client->local_node->userinfo->name, input_buffer);
             return true;
         }
         
@@ -74,16 +72,15 @@ int main()
     printf_clear_screen();
     printf("[CLIENT] ");
     bulb_printver();
-    console_io_input_buffer = input_buffer;
 
     // Get the host name to connect to and strip the newline character.
-    char hostname[2048];
+    char hostname[2048] = { 0 };
     printf("Server address: ");
     fgets(hostname, sizeof(hostname), stdin);
     hostname[strlen(hostname) - 1] = '\0';
 
     // Get the port for the completed socket and strip the newline character.
-    char port[7];   // Max digits in 16-bit port number + \n + NUL
+    char port[7] = { 0 };   // Max digits in 16-bit port number + \n + NUL
     printf("Port number (leave blank if unknown): ");
     fgets(port, sizeof(port), stdin);
     port[strlen(port) - 1] = '\0';
@@ -99,7 +96,7 @@ int main()
     // Get the player username and strip the newline character. The max username length is 
     // MAX_NAME_LENGTH, so + 3 accomodates the \n and NUL characters afterwards and also 
     // allows the client code to report to the user whether the username is too long.
-    char username[MAX_NAME_LENGTH + 3];
+    char username[MAX_NAME_LENGTH + 3] = { 0 };
     printf("Username: ");
     fgets(username, sizeof(username), stdin);
     username[strlen(username) - 1] = '\0';
@@ -119,20 +116,30 @@ int main()
     // for stdin/stdout.
     char buffer[MAX_NAME_LENGTH + 3]; // NAME: \0
     snprintf(buffer, sizeof(buffer), "%s: ", userinfo.name);
-    console_io_input_prepend = buffer;
     disable_line_buffering();
     waiting_for_input = true;
 new_iteration:
-    write_stdout_fstring("%s", buffer);
+    printf("%s", buffer);
     for (;;)
     {
+        // Wait for next user input. This doubles as a busywait loop on POSIX
+        // systems, as the use of ESC[6n in an asynchronous thread conflicts with
+        // this loop repeatedly blocking for user input itself.
         int c = read_stdin_char();
+        if (c == STDIN_EMPTY)
+            continue;
 
+        // Parse the inputted character.
         switch (c)
         {
             // Non-visible characters are captured here.
             case '\0':
                 break;
+
+            // Handle EOF.
+            case EOF:
+                printf("\n\nEOF reached");
+                goto finish;
 
             // Handle enter.
             case '\n':
@@ -140,7 +147,7 @@ new_iteration:
                 client_input(client, input_buffer);
                 memset(input_buffer, '\0', sizeof(input_buffer));
                 input_buffer_w = 0;
-                write_stdout_fstring("\n");
+                printf("\n");
                 goto new_iteration;
             
             // Visible characters should be written to the input buffer, unless
@@ -158,12 +165,13 @@ new_iteration:
                 else if (input_buffer_w < sizeof(input_buffer) - 1)
                 {
                     input_buffer[input_buffer_w++] = c;
-                    write_stdout_char(c);
+                    putchar(c);
                 }
                 break;
         }
     }
 
+finish:
     _cleanup(client);
     return 0;
 

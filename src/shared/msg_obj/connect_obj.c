@@ -46,6 +46,7 @@ void connect_obj_process(struct connect_obj* obj, struct server_node* server, st
     }
 
     struct client_node* node = quick_malloc(sizeof(struct client_node));
+    node->sock = INVALID_SOCKET;
     node->validated = true;
     node->server_node = server;
     node->userinfo = quick_malloc(sizeof(struct userinfo_obj));

@@ -59,7 +59,7 @@ static int _client_thread(void* c)
         {
             enum client_error_state state = socket_closed ? CLIENT_DISCONNECT : CLIENT_FORCE_DISCONNECT;
             if (state == CLIENT_FORCE_DISCONNECT)
-                puts("The server connection has closed unexpectedly.");
+                puts("\n\nThe server connection has closed unexpectedly.");
             _client_handle_critical_error(client->bulb_client, state, NULL);
             return 0;
         }
