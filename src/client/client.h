@@ -19,7 +19,8 @@ enum client_error_state
     CLIENT_OK,
 
     // Errors that do not disrupt the client instance.
-    CLIENT_PRINT_MESSAGE,       // data is char*
+    CLIENT_PRINT_STDOUT,        // data is const char*
+    CLIENT_RECEIVED_MESSAGE,    // data is client_message*
 
     // Client disconnect that results in the client thread being ended.
     CLIENT_DISCONNECT, 
@@ -30,6 +31,13 @@ enum client_error_state
     CLIENT_ADDRESS_FAIL,
     CLIENT_SOCKET_FAIL,
     CLIENT_AUTH_FAIL
+};
+
+// Client message struct.
+struct client_message
+{
+    const char* name;
+    const char* message;
 };
 
 // Return false to hint critical fault to the client.

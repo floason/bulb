@@ -9,9 +9,18 @@
 #include "client.h"         // MUST BE INCLUED BEFORE "console_io.h"!
 #include "console_io.h"
 
-static char input_buffer[MAX_MESSAGE_LENGTH + 1] = { };
-static int input_buffer_w = 0;
-static bool waiting_for_input = false;
+#define COLOR_LENGTH                                11 // \x1B[38:5:###m
+
+static char input_buffer[MAX_MESSAGE_LENGTH + 1]    = "";
+static int input_buffer_w                           = 0;
+static bool waiting_for_input                       = false;
+
+static const char* COLOR_LIGHT_CYAN                 = "\x1B[38:5:159m";
+static const char* COLOR_RED                        = "\x1B[38:5:1m";
+static const char* COLOR_DEFAULT                    = "\x1B[39m";
+
+// <SEQ>NAME<SEQ>\0
+static char name_buffer[COLOR_LENGTH + MAX_NAME_LENGTH + COLOR_LENGTH + 1];
 
 static void _cleanup(struct bulb_client* client)
 {
@@ -19,11 +28,39 @@ static void _cleanup(struct bulb_client* client)
     client_free(client);
 }
 
+static void _print_message(struct bulb_client* client, const char* message)
+{
+    // The current line length is calculated using the following format:
+    // NAME: MESSAGE
+    unsigned line_length = strlen(client->local_node->userinfo->name) + 2 + input_buffer_w;
+
+    // If this client is ready to type input, we need to clear that off 
+    // the screen fines.
+    unsigned cursor_x;
+    unsigned cursor_y;
+    get_console_cursor_pos(&cursor_x, &cursor_y);
+    if (waiting_for_input)
+    {
+        int lines = line_length / get_num_columns_for_console() + 1;
+        clear_lines_from_y(cursor_y - lines + 1, lines);
+    }
+
+    // Always print the message first, which should already be terminated with a newline.
+    printf("%s", message);
+
+    // If we had to do some console cleanup beforehand, print the current 
+    // input buffer again.
+    if (waiting_for_input)
+        printf("%s: %s", name_buffer, input_buffer);
+}
+
 static bool _client_exception_handler(struct bulb_client* client, 
                                       enum client_error_state error, 
                                       bool fatal, 
                                       void* data)
 {
+    char* message = NULL;
+
     switch (error)
     {
         // Clean up and exit once the client thread terminates.
@@ -33,33 +70,22 @@ static bool _client_exception_handler(struct bulb_client* client,
             exit(0);
 
         // Handle asynchronous stdout that would otherwise disrupt the input flow.
-        case CLIENT_PRINT_MESSAGE:
+        case CLIENT_RECEIVED_MESSAGE:
         {
-            // The current line length is calculated using the following format:
-            // NAME: MESSAGE
-            unsigned line_length = strlen(client->local_node->userinfo->name) + 2 + input_buffer_w;
-
-            // If this client is ready to type input, we need to clear that off 
-            // the screen fines.
-            unsigned cursor_x;
-            unsigned cursor_y;
-            get_console_cursor_pos(&cursor_x, &cursor_y);
-            if (waiting_for_input)
-            {
-                int lines = line_length / get_num_columns_for_console() + 1;
-                clear_lines_from_y(cursor_y - lines + 1, lines);
-            }
-
-            // Always print the message first, which should already be terminated with a newline.
-            char* message = (char*)data;
-            printf("%s", message);
-
-            // If we had to do some console cleanup beforehand, print the current 
-            // input buffer again.
-            if (waiting_for_input)
-                printf("%s: %s", client->local_node->userinfo->name, input_buffer);
+            // <SEQ>NAME<SEQ>: MSG\n\0
+            char buffer[COLOR_LENGTH + MAX_NAME_LENGTH + COLOR_LENGTH + 2 + MAX_MESSAGE_LENGTH + 2];
+            struct client_message* msg = (struct client_message*)data;
+            snprintf(buffer, sizeof(buffer), "%s%s%s: %s\n", 
+                COLOR_LIGHT_CYAN, 
+                msg->name, 
+                COLOR_DEFAULT,
+                msg->message);
+            _print_message(client, buffer);
             return true;
         }
+        case CLIENT_PRINT_STDOUT:
+            _print_message(client, (const char*)data);
+            return true;
         
         default:
             return !fatal;
@@ -114,12 +140,11 @@ int main()
 
     // Wait for user input. From this point, the custom console_io.h functions must be used
     // for stdin/stdout.
-    char buffer[MAX_NAME_LENGTH + 3]; // NAME: \0
-    snprintf(buffer, sizeof(buffer), "%s: ", userinfo.name);
+    snprintf(name_buffer, sizeof(name_buffer), "%s%s%s", COLOR_RED, userinfo.name, COLOR_DEFAULT);
     disable_line_buffering();
     waiting_for_input = true;
 new_iteration:
-    printf("%s", buffer);
+    printf("%s: ", name_buffer);
     for (;;)
     {
         // Wait for next user input. This doubles as a busywait loop on POSIX

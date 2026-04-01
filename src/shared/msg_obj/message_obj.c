@@ -15,6 +15,10 @@
 #include "userinfo_obj.h"
 #include "message_obj.h"
 
+#ifdef CLIENT
+#   include "client.h"
+#endif
+
 // Read a message_obj object. Returns NULL on failure.
 struct bulb_obj* message_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size)
 {
@@ -22,11 +26,12 @@ struct bulb_obj* message_obj_read(SOCKET sock, struct bulb_obj* header, size_t m
 }
 
 // Write a message_obj object. Returns false on failure.
-bool message_obj_write(SOCKET sock, const char* msg)
+bool message_obj_write(SOCKET sock, const char* name, const char* msg)
 {
     struct message_obj obj;
     obj.base.type = BULB_MESSAGE;
     obj.base.size = sizeof(struct message_obj);
+    strncpy(obj.name, name, sizeof(obj.name));
     strncpy(obj.message, msg, sizeof(obj.message));
     return bulb_obj_write(sock, (struct bulb_obj*)&obj);
 }
@@ -34,8 +39,26 @@ bool message_obj_write(SOCKET sock, const char* msg)
 // Process a message_obj object.
 void message_obj_process(struct message_obj* obj, struct server_node* server, struct client_node* client)
 {
-    char buffer[MAX_NAME_LENGTH + 2 + MAX_MESSAGE_LENGTH + 2]; // NAME: MESSAGE\n\0
-    snprintf(buffer, sizeof(buffer), "%s: %s\n", client->userinfo->name, obj->message);
-    printf("%s", buffer);
-    LOOP_CLIENTS(server->clients, client, node, stdout_obj_write(node->sock, buffer));
+#ifdef SERVER
+    // On the server, print the sender's username and their message, then forward
+    // the message object to all other clients. Even though the object will contain
+    // a copy of the sending client's name, the name stored in the client parameter's
+    // userinfo object instead should be used in case a fraudulent username is passed
+    // in the message object by the client.
+    printf("%s: %s\n", client->userinfo->name, obj->message);
+    LOOP_CLIENTS(server->clients, client, node, message_obj_write(node->sock, client->userinfo->name, 
+        obj->message));
+#else
+    // On the client, create a message exception for the client UI to handle.
+    if (client->bulb_client->exception_handler != NULL)
+    {
+        struct client_message msg_exception_obj;
+        msg_exception_obj.name = obj->name;
+        msg_exception_obj.message = obj->message;
+        client->bulb_client->exception_handler(client->bulb_client, CLIENT_RECEIVED_MESSAGE, false, 
+            (void*)&msg_exception_obj);
+    }
+    else
+        printf("%s: %s\n", obj->name, obj->message);
+#endif
 }

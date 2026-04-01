@@ -194,7 +194,7 @@ bool client_ready(struct bulb_client* client)
 // Process client input. TODO: commands
 void client_input(struct bulb_client* client, const char* msg)
 {
-    message_obj_write(client->local_node->sock, msg);
+    message_obj_write(client->local_node->sock, client->local_node->userinfo->name, msg);
 }
 
 // Free a client instance.

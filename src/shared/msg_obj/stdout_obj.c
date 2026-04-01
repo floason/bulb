@@ -53,7 +53,7 @@ void stdout_obj_process(struct stdout_obj* obj, struct server_node* server, stru
 #ifdef CLIENT
     if (client->bulb_client->exception_handler != NULL)
     {
-        client->bulb_client->exception_handler(client->bulb_client, CLIENT_PRINT_MESSAGE, false, 
+        client->bulb_client->exception_handler(client->bulb_client, CLIENT_PRINT_STDOUT, false, 
             (void*)&obj->buffer);
     }
     else
