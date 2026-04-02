@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <memory.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "bulb_version.h"
 #include "client.h"         // MUST BE INCLUED BEFORE "console_io.h"!
@@ -131,6 +132,9 @@ int main()
         username[MAX_NAME_LENGTH] = '\0';
         printf("WARNING: Your username is too long, so it has been truncated to \"%s\"!", username);
     }
+
+    // Disable stdin line buffering at this point.
+    disable_line_buffering();
     
     // Authenticate the user connection.
     struct userinfo_obj userinfo = { };
@@ -141,7 +145,6 @@ int main()
     // Wait for user input. From this point, the custom console_io.h functions must be used
     // for stdin/stdout.
     snprintf(name_buffer, sizeof(name_buffer), "%s%s%s", COLOR_RED, userinfo.name, COLOR_DEFAULT);
-    disable_line_buffering();
     waiting_for_input = true;
 new_iteration:
     printf("%s: ", name_buffer);
@@ -157,13 +160,13 @@ new_iteration:
         // Parse the inputted character.
         switch (c)
         {
-            // Non-visible characters are captured here.
+            // Reject NUL.
             case '\0':
                 break;
 
             // Handle EOF.
             case EOF:
-                printf("\n\nEOF reached");
+                printf("\n\nEOF reached; was this intentional?");
                 goto finish;
 
             // Handle enter.
@@ -179,6 +182,7 @@ new_iteration:
             // this is the backspace key, which is evaluated at runtime and
             // therefore must be checked here.
             default:
+
                 if (c == get_console_backspace_key())
                 {
                     if (input_buffer_w > 0)
@@ -189,7 +193,11 @@ new_iteration:
                 }
                 else if (input_buffer_w < sizeof(input_buffer) - 1)
                 {
-                    input_buffer[input_buffer_w++] = c;
+                    // Only visible characters should be added to the input buffer,
+                    // although they will still be printed to the console so as to
+                    // not cause weird disparities in user input.
+                    if (isprint(c))
+                        input_buffer[input_buffer_w++] = c;
                     putchar(c);
                 }
                 break;

@@ -181,6 +181,7 @@ bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinf
     client->local_node->userinfo = quick_malloc(sizeof(struct userinfo_obj));
     memcpy(client->local_node->userinfo, &userinfo, sizeof(struct userinfo_obj));
 
+    while (!client->local_node->validated);
     return true;
 }
 

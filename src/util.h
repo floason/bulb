@@ -7,6 +7,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <ctype.h>
 
 #if defined __unix__ || defined __APPLE__
 #   define __UNIX__
@@ -51,4 +54,14 @@ static inline void* quick_calloc(size_t count, size_t size)
 static inline void* quick_malloc(size_t size)
 {
     return quick_calloc(1, size);
+}
+
+static inline int str_isprint(const char* str)
+{
+    for (int i = 0, len = strlen(str); i < len; i++)
+    {
+        if (!isprint(str[i]))
+            return false;
+    }
+    return true;
 }

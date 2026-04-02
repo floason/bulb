@@ -42,7 +42,7 @@ void connect_obj_process(struct connect_obj* obj, struct server_node* server, st
     if (obj->validate_only)
     {
         client->validated = true;
-        return;
+        goto finish;
     }
 
     struct client_node* node = quick_malloc(sizeof(struct client_node));
@@ -53,4 +53,7 @@ void connect_obj_process(struct connect_obj* obj, struct server_node* server, st
     memcpy(node->userinfo, &obj->userinfo, sizeof(struct userinfo_obj));
  
     server_connect_client(server, node);
+
+finish:
+    free(obj);
 }

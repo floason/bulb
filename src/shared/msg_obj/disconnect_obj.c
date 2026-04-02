@@ -39,4 +39,5 @@ void disconnect_obj_process(struct disconnect_obj* obj, struct server_node* serv
             return;
         }
     })
+    free(obj);
 }

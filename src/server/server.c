@@ -170,7 +170,7 @@ void server_set_exception_handler(struct bulb_server* server, server_exception_f
 bool server_listen(struct bulb_server* server)
 {
     ASSERT(server, return false);
-    ASSERT(!server->is_listening, { return false; })
+    ASSERT(!server->is_listening, return false; );
 
     int result = listen(server->listen_sock, SOMAXCONN);
     ASSERT(result != SOCKET_ERROR, 

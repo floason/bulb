@@ -69,8 +69,7 @@ void server_disconnect_client(struct server_node* server, struct client_node* cl
             char buffer[64 + MAX_NAME_LENGTH];
             snprintf(buffer, sizeof(buffer), "Client \"%s\" has disconnected\n",
                 client->userinfo->name);
-            LOOP_CLIENTS(server->clients, client, node, 
-                stdout_obj_write(node->sock, buffer));
+            LOOP_CLIENTS(server->clients, client, node, stdout_obj_write(node->sock, buffer));
         }
         else
             fprintf(stderr, "Client from address %s failed to connect\n", ip_str);
@@ -94,6 +93,29 @@ void server_disconnect_client(struct server_node* server, struct client_node* cl
 #endif
 
     _client_close(client);
+}
+
+// Kick a client. This should be called from server code only, and is assumed to be
+// called only from object code too.
+void server_kick(struct server_node* server, struct client_node* client, const char* msg)
+{
+#ifdef SERVER
+    // Log the client's departure in the server console and to the client itself.
+    char ip_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
+    printf("Client \"%s\" (%s) has been kicked from the server: %s", client->userinfo->name, ip_str, 
+        msg);
+    stdout_obj_write(client->sock, msg);
+    
+    // Write to all other clients that this user has been kicked.
+    char buffer[1024 + MAX_NAME_LENGTH];
+    snprintf(buffer, sizeof(buffer), "Client \"%s\" has been kicked from the server: %s",
+        client->userinfo->name, msg);
+    LOOP_CLIENTS(server->clients, client, node, stdout_obj_write(node->sock, buffer));
+
+    // Mark the client node being kicked for deletion.
+    client->delete = true;
+#endif
 }
 
 // Disconnect all connected clients from a server node's clients list. This will free

@@ -240,7 +240,7 @@ static inline bool clear_lines_from_y(unsigned y_pos, unsigned count)
     return true;
 #elif defined __UNIX__
     printf("\x1B[%d;1H", y_pos + count);
-    for (int i = 0; i < count - 1; ++i)
+    for (int i = 0; i < count - 1; i++)
         printf("\x1B[2K\x1B[A");
     printf("\x1B[2K");
     return true;

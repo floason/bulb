@@ -59,7 +59,14 @@ void stdout_obj_process(struct stdout_obj* obj, struct server_node* server, stru
     else
         printf("%s", obj->buffer);
 #else
+    if (!str_isprint(obj->buffer))
+    {
+        server_kick(server, client, "Message communication must utilise displayable characters!\n");
+        goto finish;
+    }
     printf("%s", obj->buffer);
 #endif
+
+finish:
     free(obj);
 }

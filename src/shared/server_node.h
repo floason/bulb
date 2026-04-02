@@ -39,6 +39,10 @@ void server_connect_client(struct server_node* server, struct client_node* clien
 // node from memory.
 void server_disconnect_client(struct server_node* server, struct client_node* client);
 
+// Kick a client. This should be called from server code only, and is assumed to be
+// called only from object code too.
+void server_kick(struct server_node* server, struct client_node* client, const char* msg);
+
 // Disconnect all connected clients from a server node's clients list. This will free
 // all client nodes from memory.
 void server_disconnect_all_clients(struct server_node* server);

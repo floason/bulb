@@ -39,8 +39,14 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     if (strlen(obj->name) == 0)
     {
         stdout_obj_write(client->sock, "Your username cannot be empty!\n");
-        client->delete = true;
-        return;
+        goto kick_client;
+    }
+
+    // Reject clients with non-renderable usernames.
+    if (!str_isprint(obj->name))
+    {
+        stdout_obj_write(client->sock, "Your username must contain only displayable characters!\n");
+        goto kick_client;
     }
 
     // Get the connecting IP address.
@@ -63,8 +69,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
             "expects version %d.%d.%d\n", client->userinfo->name, ip_str, obj->major, obj->minor, 
             obj->patch, MAJOR, MINOR, PATCH);
 
-        client->delete = true;
-        return;
+        goto kick_client;
     }
 
     // Reject the client if it has the same username as another user.
@@ -75,8 +80,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
             stdout_obj_write(client->sock, "Sorry, another client is already connected with that name!\n");
             fprintf(stderr, "Client \"%s\" (%s) failed to connect as the given username is already "    \
                 "occupied\n", client->userinfo->name, ip_str);
-            client->delete = true;
-            return;
+            goto kick_client;
         }
     });
 
@@ -102,4 +106,10 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
 #endif
 
     ASSERT(false, return);
+
+#ifdef SERVER
+kick_client:
+    client->delete = true;
+    return;
+#endif
 }

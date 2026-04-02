@@ -40,6 +40,13 @@ bool message_obj_write(SOCKET sock, const char* name, const char* msg)
 void message_obj_process(struct message_obj* obj, struct server_node* server, struct client_node* client)
 {
 #ifdef SERVER
+    // Verify the client's message before processing it.
+    if (!str_isprint(obj->message))
+    {
+        server_kick(server, client, "Message communication must utilise displayable characters!\n");
+        goto finish;
+    }
+
     // On the server, print the sender's username and their message, then forward
     // the message object to all other clients. Even though the object will contain
     // a copy of the sending client's name, the name stored in the client parameter's
@@ -61,4 +68,7 @@ void message_obj_process(struct message_obj* obj, struct server_node* server, st
     else
         printf("%s: %s\n", obj->name, obj->message);
 #endif
+
+finish:
+    free(obj);
 }
