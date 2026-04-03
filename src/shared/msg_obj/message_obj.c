@@ -56,17 +56,10 @@ void message_obj_process(struct message_obj* obj, struct server_node* server, st
     LOOP_CLIENTS(server->clients, client, node, message_obj_write(node->sock, client->userinfo->name, 
         obj->message));
 #else
-    // On the client, create a message exception for the client UI to handle.
-    if (client->bulb_client->exception_handler != NULL)
-    {
-        struct client_message msg_exception_obj;
-        msg_exception_obj.name = obj->name;
-        msg_exception_obj.message = obj->message;
-        client->bulb_client->exception_handler(client->bulb_client, CLIENT_RECEIVED_MESSAGE, false, 
-            (void*)&msg_exception_obj);
-    }
-    else
-        printf("%s: %s\n", obj->name, obj->message);
+    struct client_message msg_exception_obj;
+    msg_exception_obj.name = obj->name;
+    msg_exception_obj.message = obj->message;
+    client_throw_exception(client->bulb_client, CLIENT_RECEIVED_MESSAGE, (void*)&msg_exception_obj);
 #endif
 
 finish:

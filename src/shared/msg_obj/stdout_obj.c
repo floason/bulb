@@ -51,13 +51,7 @@ bool stdout_obj_write(SOCKET sock, const char* msg)
 void stdout_obj_process(struct stdout_obj* obj, struct server_node* server, struct client_node* client)
 {
 #ifdef CLIENT
-    if (client->bulb_client->exception_handler != NULL)
-    {
-        client->bulb_client->exception_handler(client->bulb_client, CLIENT_PRINT_STDOUT, false, 
-            (void*)&obj->buffer);
-    }
-    else
-        printf("%s", obj->buffer);
+    client_throw_exception(client->bulb_client, CLIENT_PRINT_STDOUT, (void*)&obj->buffer);
 #else
     if (!str_isprint(obj->buffer))
     {

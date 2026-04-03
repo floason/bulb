@@ -4,43 +4,13 @@
 // See userinfo_obj.c for user validation code.
 
 #include <string.h>
+#include <stdbool.h>
 
 #include "unisock.h"
 #include "server.h"
 #include "stdout_obj.h"
 #include "obj_reader.h"
 #include "obj_process.h"
-
-// Start handling a non-critical error.
-static bool _server_handle_non_critical_error(struct bulb_server* server, 
-                                              enum server_error_state error, 
-                                              void* data)
-{
-    // If no exception handler is set, just continue as normal.
-    if (server->exception_handler == NULL)
-        return true;
-
-    // Invoke the exception handler. If it returns false, the server should shut down.
-    if (!server->exception_handler(server, error, false, data))
-    {
-        server->error_state = error;
-        return false;
-    }
-    return true;
-}
-
-// Start handling a critical error.
-static void _server_handle_critical_error(struct bulb_server* server, 
-                                          enum server_error_state error, 
-                                          void* data)
-{
-    // If no exception handler is set, ignore.
-    if (server->exception_handler == NULL)
-        return;
-
-    server->exception_handler(server, error, true, data);
-    server->error_state = error;
-}
 
 // A thread is created for this function whenever a new client connection 
 // is started for a given client instance.
@@ -87,7 +57,7 @@ static int _server_listen_thread(void* s)
         ASSERT(node->sock != INVALID_SOCKET,
         {
             free(node);
-            if (!_server_handle_non_critical_error(server, SERVER_CLIENT_ACCEPT_FAIL, NULL))
+            if (!server_throw_exception(server, SERVER_CLIENT_ACCEPT_FAIL, NULL))
                 return 0;
         }, "Failed to accept new client connection: %d\n", socket_errno());
 
@@ -146,6 +116,7 @@ struct bulb_server* server_init(const char* port, enum server_error_state* error
     freeaddrinfo(addr_ptr);
 
     server_node_init(&server->server_node);
+    server->server_node.bulb_server = server;
     return server;
 
 fail:
@@ -164,6 +135,37 @@ void server_set_exception_handler(struct bulb_server* server, server_exception_f
 {
     ASSERT(server, return);
     server->exception_handler = func;
+}
+
+// Start handling a non-critical exception. If the exception returns false,
+// it will be re-evaluated as a critical error and this function will return
+// false.
+bool server_throw_exception(struct bulb_server* server, 
+                            enum server_error_state error, 
+                            void* data)
+{
+    ASSERT(server, return false);
+    ASSERT(server->exception_handler != NULL, return false, "Server exception handler is not set.\n");
+
+    // Invoke the exception handler. If it returns false, the server should shut down.
+    bool result = server->exception_handler(server, error, false, data);
+    server->error_state = error;
+    if (!result)
+        return false;
+    return true;
+}
+
+// Start handling a critical error.
+static void server_throw_critical_error(struct bulb_server* server, 
+                                        enum server_error_state error, 
+                                        void* data)
+{
+    ASSERT(server, return);
+    ASSERT(server->exception_handler != NULL, return, "Server exception handler is not set.\n");
+
+    // Invoke the exception handler.
+    server->exception_handler(server, error, true, data);
+    server->error_state = error;
 }
 
 // Start accepting new clients asynchronously. Returns false on error.

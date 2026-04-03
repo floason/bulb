@@ -12,6 +12,7 @@
 #include "unisock.h"
 #include "bulb_macros.h"
 
+struct bulb_client;
 struct userinfo_obj;
 
 struct client_node

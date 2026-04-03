@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <memory.h>
 #include <string.h>
 #include <ctype.h>
@@ -18,6 +19,7 @@ static bool waiting_for_input                       = false;
 
 static const char* COLOR_LIGHT_CYAN                 = "\x1B[38:5:159m";
 static const char* COLOR_RED                        = "\x1B[38:5:1m";
+static const char* COLOR_GREEN                      = "\x1B[38:5:2m";
 static const char* COLOR_DEFAULT                    = "\x1B[39m";
 
 // <SEQ>NAME<SEQ>\0
@@ -65,8 +67,10 @@ static bool _client_exception_handler(struct bulb_client* client,
     switch (error)
     {
         // Clean up and exit once the client thread terminates.
-        case CLIENT_DISCONNECT:
         case CLIENT_FORCE_DISCONNECT:
+            puts("\n\nThe server connection has closed unexpectedly.");
+        case CLIENT_DISCONNECT:
+            client->disconnect_handled = true;
             _cleanup(client);
             exit(0);
 
@@ -172,11 +176,20 @@ new_iteration:
             // Handle enter.
             case '\n':
             case '\r':
-                client_input(client, input_buffer);
+            {
+                bool cmd_success;
+                printf("\n");
+                if (client_input(client, input_buffer, &cmd_success))
+                {
+                    if (cmd_success)
+                        printf("%sCommand executed successfully!%s\n", COLOR_GREEN, COLOR_DEFAULT);
+                    else
+                        printf("%sCould not find command.%s\n", COLOR_RED, COLOR_DEFAULT);
+                }
                 memset(input_buffer, '\0', sizeof(input_buffer));
                 input_buffer_w = 0;
-                printf("\n");
                 goto new_iteration;
+            }
             
             // Visible characters should be written to the input buffer, unless
             // this is the backspace key, which is evaluated at runtime and

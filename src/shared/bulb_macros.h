@@ -1,6 +1,8 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
+#pragma once
+
 // Use this as the first port to try as the server, by default.
 #define FIRST_PORT          32765
 

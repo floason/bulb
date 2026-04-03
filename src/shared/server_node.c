@@ -44,6 +44,8 @@ void server_connect_client(struct server_node* server, struct client_node* clien
     if (server->clients == NULL)
         server->clients = client;
 
+    server->number_connected++;
+
     // See further client connection (i.e. authentication) code in msg_obj/userinfo_obj.c.
 }   
 
@@ -92,6 +94,7 @@ void server_disconnect_client(struct server_node* server, struct client_node* cl
             disconnect_obj_write(node->sock, client->userinfo->name));
 #endif
 
+    server->number_connected--;
     _client_close(client);
 }
 

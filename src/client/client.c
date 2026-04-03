@@ -2,47 +2,17 @@
 // Licensed under the MIT License.
 
 #include <string.h>
+#include <stdbool.h>
+#include <ctype.h>
 
 #include "unisock.h"
 #include "bulb_version.h"
 #include "client.h"
+#include "cmds.h"
 #include "obj_reader.h"
 #include "obj_process.h"
 #include "userinfo_obj.h"
 #include "message_obj.h"
-
-// Start handling a non-critical error.
-static bool _client_handle_non_critical_error(struct bulb_client* client, 
-                                              enum client_error_state error, 
-                                              void* data)
-{
-    // If no exception handler is set, just continue as normal.
-    if (client->exception_handler == NULL)
-        return true;
-
-    // Invoke the exception handler. If it returns false, the server should shut down.
-    if (!client->exception_handler(client, error, false, data))
-    {
-        if (client != NULL)
-            client->error_state = error;
-        return false;
-    }
-    return true;
-}
-
-// Start handling a critical error.
-static void _client_handle_critical_error(struct bulb_client* client, 
-                                          enum client_error_state error, 
-                                          void* data)
-{
-    // If no exception handler is set, ignore.
-    if (client->exception_handler == NULL)
-        return;
-
-    client->exception_handler(client, error, true, data);
-    if (client != NULL)
-        client->error_state = error;
-}
 
 // A thread is created for this function once a client instance connects
 // to a server successfully.
@@ -57,10 +27,8 @@ static int _client_thread(void* c)
         struct bulb_obj* obj = bulb_obj_read(client->sock, &socket_closed);
         if (obj == NULL)
         {
-            enum client_error_state state = socket_closed ? CLIENT_DISCONNECT : CLIENT_FORCE_DISCONNECT;
-            if (state == CLIENT_FORCE_DISCONNECT)
-                puts("\n\nThe server connection has closed unexpectedly.");
-            _client_handle_critical_error(client->bulb_client, state, NULL);
+            if (!client->bulb_client->disconnect_handled)
+                client_throw_critical_error(client->bulb_client, CLIENT_FORCE_DISCONNECT, NULL);
             return 0;
         }
 
@@ -113,6 +81,7 @@ struct bulb_client* client_init(const char* host, const char* port, enum client_
     server_node_init(&client->server_node);
     client->local_node->server_node = &client->server_node;
 
+    bulb_register_shared_cmds();
     return client;
 
 fail:
@@ -130,6 +99,37 @@ fail:
 void client_set_exception_handler(struct bulb_client* client, client_exception_func func)
 {
     client->exception_handler = func;
+}
+
+// Start handling a non-critical exception. If the exception returns false,
+// it will be re-evaluated as a critical error and this function will return
+// false.
+bool client_throw_exception(struct bulb_client* client, 
+                            enum client_error_state error, 
+                            void* data)
+{
+    ASSERT(client, return false);
+    ASSERT(client->exception_handler != NULL, return false, "Client exception handler is not set.\n");
+
+    // Invoke the exception handler. If it returns false, the server should shut down.
+    bool result = client->exception_handler(client, error, false, data);
+    client->error_state = error;
+    if (!result)
+        return false;
+    return true;
+}
+
+// Start handling a critical error.
+void client_throw_critical_error(struct bulb_client* client, 
+                                 enum client_error_state error, 
+                                 void* data)
+{
+    ASSERT(client, return);
+    ASSERT(client->exception_handler != NULL, return, "Client exception handler is not set.\n");
+
+    // Invoke the exception handler.
+    client->exception_handler(client, error, true, data);
+    client->error_state = error;
 }
 
 // Connect the client. Returns false on error.
@@ -192,10 +192,25 @@ bool client_ready(struct bulb_client* client)
     return client->local_node->validated;
 }
 
-// Process client input. TODO: commands
-void client_input(struct bulb_client* client, const char* msg)
+// Process client input. Returns true if a command was detected, otherwise false.
+bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success)
 {
+    // Check if the first non-whitespace character of the message is a slash.
+    for (int i = 0, len = strlen(msg); i < len; i++)
+    {
+        if (isspace(msg[i]))
+            continue;
+        if (msg[i] != '/')
+            break;
+        
+        
+        bool result = bulb_parse_cmd_input(&client->server_node, client->local_node, msg + i + 1);
+        if (cmd_success != NULL)
+            *cmd_success = result;
+        return true;
+    }
     message_obj_write(client->local_node->sock, client->local_node->userinfo->name, msg);
+    return false;
 }
 
 // Free a client instance.
@@ -206,6 +221,8 @@ void client_free(struct bulb_client* client)
     WSACleanup();
 #endif
 
+    client->is_connected = false;
+
     // If the bulb_client instance is being freed from memory, the entire client
     // connection is being terminated. Thus, every single client node should
     // also be cleaned up in the process. This also cleans up the current client's
@@ -215,4 +232,6 @@ void client_free(struct bulb_client* client)
     if (client->addr_ptr != NULL)
         freeaddrinfo(client->addr_ptr);
     free(client);
+
+    bulb_cmds_cleanup();
 }

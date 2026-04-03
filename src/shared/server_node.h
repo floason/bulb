@@ -19,12 +19,19 @@
                 SCOPE;                          \
             ID = ID->next;                      \
         }                                       \
-    }                                           
+    }            
+    
+struct bulb_server;
 
 struct server_node
 {
+#ifdef SERVER
+    struct bulb_server* bulb_server;
+#endif
+
     // TODO: populate with server details such as name
 
+    unsigned number_connected;
     struct client_node* clients;        // The first node will always be the local client in client code!
     struct client_node* clients_tail;    
 };

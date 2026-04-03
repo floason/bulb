@@ -16,7 +16,7 @@ enum server_error_state
     // OK
     SERVER_OK,
 
-    // Errors that do not disrupt the server instance.
+    // Exceptions which do not disrupt the server instance.
     SERVER_CLIENT_ACCEPT_FAIL,
 
     // Server exit that results in the server thread being ended.
@@ -53,6 +53,18 @@ struct bulb_server
 
 // Create a new server instance. error_state can be NULL. Returns NULL on error.
 struct bulb_server* server_init(const char* port, enum server_error_state* error_state);
+
+// Start handling a non-critical exception. If the exception returns false,
+// it will be re-evaluated as a critical error and this function will return
+// false.
+bool server_throw_exception(struct bulb_server* server, 
+                            enum server_error_state error, 
+                            void* data);
+
+// Start handling a critical error.
+void server_throw_critical_error(struct bulb_server* server, 
+                                 enum server_error_state error, 
+                                 void* data);
 
 // Set a custom exception handler.
 void server_set_exception_handler(struct bulb_server* server, server_exception_func func);

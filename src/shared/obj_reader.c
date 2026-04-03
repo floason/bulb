@@ -40,7 +40,7 @@ struct bulb_obj* bulb_obj_read(SOCKET sock, bool* socket_closed)
     // If read does not return a valid length, the connection has likely been closed.
     if (read <= 0)
     {
-        *socket_closed = (read != SOCKET_ERROR);
+        *socket_closed = true;
         return NULL;
     }
     

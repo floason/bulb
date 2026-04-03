@@ -7,6 +7,7 @@
 
 #include "unisock.h"
 #include "bulb_macros.h"
+#include "client_node.h"
 #include "server_node.h"
 #include "userinfo_obj.h"
 
@@ -18,7 +19,7 @@ enum client_error_state
     // OK
     CLIENT_OK,
 
-    // Errors that do not disrupt the client instance.
+    // Exceptions which do not disrupt the client instance.
     CLIENT_PRINT_STDOUT,        // data is const char*
     CLIENT_RECEIVED_MESSAGE,    // data is client_message*
 
@@ -53,6 +54,8 @@ struct bulb_client
 #endif
     struct addrinfo* addr_ptr;
     bool is_connected;
+    bool disconnect_handled;    // Should be toggled by the exception handler on either
+                                // disconnect events.
     enum client_error_state error_state;
 
     struct client_node* local_node;
@@ -69,6 +72,18 @@ struct bulb_client* client_init(const char* host, const char* port, enum client_
 // Set a custom exception handler.
 void client_set_exception_handler(struct bulb_client* client, client_exception_func func);
 
+// Start handling a non-critical exception. If the exception returns false,
+// it will be re-evaluated as a critical error and this function will return
+// false.
+bool client_throw_exception(struct bulb_client* client, 
+                            enum client_error_state error, 
+                            void* data);
+
+// Start handling a critical error.
+void client_throw_critical_error(struct bulb_client* client, 
+                                 enum client_error_state error, 
+                                 void* data);
+
 // Connect the client. Returns false on error.
 bool client_connect(struct bulb_client* client);
 
@@ -79,8 +94,8 @@ bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinf
 // Is the client ready for communication?
 bool client_ready(struct bulb_client* client);
 
-// Process client ipnut.
-void client_input(struct bulb_client* client, const char* msg);
+// Process client input. Returns true if a command was detected, otherwise false.
+bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success);
 
 // Free a client instance.
 void client_free(struct bulb_client* client);
