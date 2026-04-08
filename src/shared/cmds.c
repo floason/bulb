@@ -26,7 +26,7 @@ bool _cmd_status(struct server_node* server, struct client_node* client, struct 
 {
     bulb_printver();
     printf("no. connected: %d\n", server->number_connected);
-    LOOP_CLIENTS(server->clients, NULL, node, 
+    LOOP_CLIENTS(server, NULL, node, 
     {
         printf("- \"%s\"", node->userinfo->name);
 #ifdef SERVER
@@ -69,7 +69,7 @@ bool bulb_parse_cmd_input(struct server_node* server, struct client_node* client
 
     int buffer_len = strlen(buffer), temp_len = buffer_len + 1;
     char cmd[MAX_CMD_NAME_LENGTH + 1] = "";
-    char* temp_buffer = (char*)quick_malloc(temp_len);
+    char* temp_buffer = (char*)tagged_malloc(temp_len, TAG_TEMP_OBJ);
     struct cmd_args* params = NULL;
     struct cmd_args* next = NULL;
 
@@ -84,18 +84,22 @@ bool bulb_parse_cmd_input(struct server_node* server, struct client_node* client
             else
             {
                 if (params == NULL)
-                    next = params = (struct cmd_args*)quick_malloc(sizeof(struct cmd_args));
+                    next = params = (struct cmd_args*)tagged_malloc(sizeof(struct cmd_args), TAG_TEMP_OBJ);
                 else
-                    next = params->next = (struct cmd_args*)quick_malloc(sizeof(struct cmd_args));
+                    next = params->next = (struct cmd_args*)tagged_malloc(sizeof(struct cmd_args), TAG_TEMP_OBJ);
                 params->argc++;
                 next->param = temp_buffer;
-                temp_buffer = (char*)quick_malloc(temp_len);
+                temp_buffer = (char*)tagged_malloc(temp_len, TAG_TEMP_OBJ);
             }
             memset(temp_buffer, 0, temp_len);
         }
         else
             temp_buffer[strlen(temp_buffer)] = buffer[i];
     }
+
+    // This must be free()'d separately as it is still re-allocated independently
+    // of its assignment to any parameter object.
+    tagged_free(temp_buffer, TAG_TEMP_OBJ);
 
     bulb_cmd_func func = trie_find(bulb_cmds, buffer);
     if (func == NULL)
@@ -107,14 +111,12 @@ finish:
     while (next)
     {
         params = next;
-        free(next->param);
-        free(next);
+        tagged_free(next->param, TAG_TEMP_OBJ);
+        tagged_free(next, TAG_TEMP_OBJ);
         next = params->next;
     }
 
-    // This must also be free()'d as it is still re-allocated independently of
-    // its assignment to any parameter object.
-    free(temp_buffer);
+    
     return func != NULL;
 }
 

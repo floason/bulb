@@ -12,20 +12,20 @@
 #include "message_obj.h"
 
 // Handle reading a root Bulb object.
-static struct bulb_obj* _bulb_obj_read(SOCKET sock, struct bulb_obj* header)
+static struct bulb_obj* _bulb_obj_read(struct mt_socket* sock, struct bulb_obj* header)
 {
     // We need to flush the bulb_obj object out of the buffer first.
     char discard[sizeof(struct bulb_obj)];
-    recv(sock, discard, sizeof(discard), 0);
+    recv(sock->socket, discard, sizeof(discard), 0);
     
-    struct bulb_obj* obj = quick_malloc(sizeof(struct bulb_obj));
+    struct bulb_obj* obj = tagged_malloc(sizeof(struct bulb_obj), TAG_BULB_OBJ);
     memcpy(obj, header, sizeof(struct bulb_obj));
     return obj;
 }
 
 // Read a Bulb object from a socket. The object is dynamically allocated and thus
 // must be released from memory afterwards.
-struct bulb_obj* bulb_obj_read(SOCKET sock, bool* socket_closed)
+struct bulb_obj* bulb_obj_read(struct mt_socket* sock, bool* socket_closed)
 {
     // The purpose of this function is to read a single object that's currently
     // buffered. Streamed data buffered by multiple send() calls may be read in
@@ -35,7 +35,7 @@ struct bulb_obj* bulb_obj_read(SOCKET sock, bool* socket_closed)
     *socket_closed = false;
 
     char buffer[sizeof(struct bulb_obj)];
-    int read = recv(sock, buffer, sizeof(buffer), MSG_PEEK);
+    int read = recv(sock->socket, buffer, sizeof(buffer), MSG_PEEK);
 
     // If read does not return a valid length, the connection has likely been closed.
     if (read <= 0)

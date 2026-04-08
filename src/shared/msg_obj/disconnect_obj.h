@@ -22,10 +22,12 @@ struct disconnect_obj
 };
 
 // Read a disconnect_obj object. Returns NULL on failure.
-struct bulb_obj* disconnect_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size);
+struct bulb_obj* disconnect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size);
 
 // Write a disconnect_obj object. Returns false on failure.
-bool disconnect_obj_write(SOCKET sock, const char* name);
+bool disconnect_obj_write(struct mt_socket* sock, const char* name);
 
 // Process a disconnect_obj object.
-void disconnect_obj_process(struct disconnect_obj* obj, struct server_node* server, struct client_node* client);
+void disconnect_obj_process(struct disconnect_obj* obj, 
+                            struct server_node* server, 
+                            struct client_node* client);

@@ -40,7 +40,7 @@ static struct trie* _trie_find(struct trie* trie, const char* key)
 // Create a new trie.
 struct trie* trie_new()
 {
-    return (struct trie*)quick_malloc(sizeof(struct trie));
+    return (struct trie*)tagged_malloc(sizeof(struct trie), TAG_TRIE);
 }
 
 // Add a new entry to the trie. Returns false if the key already exists, 
@@ -105,7 +105,7 @@ bool trie_delete(struct trie* trie, const char* key)
     if (node->children == NULL)
     {
         node->parent->children = NULL;
-        free(node);
+        tagged_free(node, TAG_TRIE);
     }
     else
         node->value = NULL;
@@ -120,5 +120,5 @@ void trie_free(struct trie* trie)
         trie_free(trie->next);
     if (trie->children)
         trie_free(trie->children);
-    free(trie);
+    tagged_free(trie, TAG_TRIE);
 }

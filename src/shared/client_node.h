@@ -24,15 +24,21 @@ struct client_node
     struct userinfo_obj* userinfo;
     bool validated;
 
+    // In order to prevent race conditions during client-looping code, client node
+    // objects cannot be immediately free()'d from memory. This must be handled
+    // at an appropriate time where LOOP_CLIENTS() is not being called.
+    bool flag_for_deletion;
+
 #ifdef SERVER
-    // Used during client validation.
+    // Used only by the server for triggering the client deletion code after an object
+    // is finished being processed.
     bool delete;
 
     struct sockaddr_in addr;
 #endif
 
-    SOCKET sock;
     thrd_t thread;
+    struct mt_socket mt_sock;
     struct client_node* next;   // This will always be NULL for the local client in client code!
     struct client_node* prev;
 };

@@ -8,7 +8,6 @@
 
 #include "unisock.h"
 #include "server.h"
-#include "stdout_obj.h"
 #include "obj_reader.h"
 #include "obj_process.h"
 
@@ -22,7 +21,7 @@ static int _server_client_thread(void* c)
     for (;;)
     {
         bool socket_closed;
-        struct bulb_obj* obj = bulb_obj_read(client->sock, &socket_closed);
+        struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, &socket_closed);
         if (obj == NULL)
         {
             server_disconnect_client(server, client);
@@ -51,18 +50,23 @@ static int _server_listen_thread(void* s)
     for (;;)
     {
         int length = sizeof(struct sockaddr_in);
-        struct client_node* node = quick_malloc(sizeof(struct client_node));
+        struct client_node* node = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
         node->server_node = &server->server_node;
-        node->sock = accept(server->listen_sock, (struct sockaddr*)&node->addr, &length);
-        ASSERT(node->sock != INVALID_SOCKET,
+        
+        SOCKET sock = accept(server->listen_sock, (struct sockaddr*)&node->addr, &length);
+        ASSERT(sock != INVALID_SOCKET,
         {
-            free(node);
+            tagged_free(node, TAG_CLIENT_NODE);
             if (!server_throw_exception(server, SERVER_CLIENT_ACCEPT_FAIL, NULL))
                 return 0;
         }, "Failed to accept new client connection: %d\n", socket_errno());
 
+        setup_mt_socket(&node->mt_sock, sock);
         server_connect_client(&server->server_node, node);
         thrd_create(&node->thread, _server_client_thread, (void*)node);
+
+        // Periodically deallocate clients marked for deletion.
+        server_free_flagged_clients(&server->server_node);
     }
 
     return 0;
@@ -71,7 +75,7 @@ static int _server_listen_thread(void* s)
 // Create a new server instance. error_state can be NULL. Returns NULL on error.
 struct bulb_server* server_init(const char* port, enum server_error_state* error_state)
 {
-    struct bulb_server* server = quick_malloc(sizeof(struct bulb_server));
+    struct bulb_server* server = tagged_malloc(sizeof(struct bulb_server), TAG_BULB_SERVER);
     server->listen_sock = INVALID_SOCKET;
 
     // If Winsock is being used, Winsock must be initialized beforehand.
@@ -126,7 +130,7 @@ fail:
         closesocket(server->listen_sock);
     if (addr_ptr != NULL)
         freeaddrinfo(addr_ptr);
-    free(server);
+    tagged_free(server, TAG_BULB_SERVER);
     return NULL;
 }
 
@@ -156,7 +160,7 @@ bool server_throw_exception(struct bulb_server* server,
 }
 
 // Start handling a critical error.
-static void server_throw_critical_error(struct bulb_server* server, 
+void server_throw_critical_error(struct bulb_server* server, 
                                         enum server_error_state error, 
                                         void* data)
 {
@@ -196,5 +200,5 @@ void server_free(struct bulb_server* server)
 
     server_disconnect_all_clients(&server->server_node);
     closesocket(server->listen_sock);
-    free(server);
+    tagged_free(server, TAG_BULB_SERVER);
 }

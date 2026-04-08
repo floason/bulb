@@ -20,13 +20,13 @@
 #endif
 
 // Read a message_obj object. Returns NULL on failure.
-struct bulb_obj* message_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size)
+struct bulb_obj* message_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size)
 {
     return bulb_obj_template_recv(sock, header, min_size);
 }
 
 // Write a message_obj object. Returns false on failure.
-bool message_obj_write(SOCKET sock, const char* name, const char* msg)
+bool message_obj_write(struct mt_socket* sock, const char* name, const char* msg)
 {
     struct message_obj obj;
     obj.base.type = BULB_MESSAGE;
@@ -53,7 +53,7 @@ void message_obj_process(struct message_obj* obj, struct server_node* server, st
     // userinfo object instead should be used in case a fraudulent username is passed
     // in the message object by the client.
     printf("%s: %s\n", client->userinfo->name, obj->message);
-    LOOP_CLIENTS(server->clients, client, node, message_obj_write(node->sock, client->userinfo->name, 
+    LOOP_CLIENTS(server, client, node, message_obj_write(&node->mt_sock, client->userinfo->name, 
         obj->message));
 #else
     struct client_message msg_exception_obj;
@@ -63,5 +63,5 @@ void message_obj_process(struct message_obj* obj, struct server_node* server, st
 #endif
 
 finish:
-    free(obj);
+    tagged_free(obj, TAG_BULB_OBJ);
 }

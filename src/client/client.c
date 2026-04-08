@@ -24,7 +24,7 @@ static int _client_thread(void* c)
     for (;;)
     {
         bool socket_closed;
-        struct bulb_obj* obj = bulb_obj_read(client->sock, &socket_closed);
+        struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, &socket_closed);
         if (obj == NULL)
         {
             if (!client->bulb_client->disconnect_handled)
@@ -34,6 +34,9 @@ static int _client_thread(void* c)
 
         ASSERT(bulb_process_object(obj, server, client), return 0,
             "Failed to process Bulb object of type %d\n", obj->type);
+
+        // Periodically deallocate clients marked for deletion.
+        server_free_flagged_clients(server);
     }
 
     return 0;
@@ -42,7 +45,7 @@ static int _client_thread(void* c)
 // Create a new client instance. Returns NULL on error.
 struct bulb_client* client_init(const char* host, const char* port, enum client_error_state* error_state)
 {
-    struct bulb_client* client = quick_malloc(sizeof(struct bulb_client));
+    struct bulb_client* client = tagged_malloc(sizeof(struct bulb_client), TAG_BULB_CLIENT);
 
     // If Winsock is being used, Winsock must be initialized beforehand.
     int result = 0;
@@ -68,16 +71,17 @@ struct bulb_client* client_init(const char* host, const char* port, enum client_
     }, "getaddrinfo() failed: %d\n", result);
 
     // Set up the local client node and instantiate its socket for server communication.
-    client->local_node = quick_malloc(sizeof(struct client_node));
+    client->local_node = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
     client->local_node->bulb_client = client;
-    client->local_node->sock = socket(client->addr_ptr->ai_family, client->addr_ptr->ai_socktype,
+    SOCKET sock = socket(client->addr_ptr->ai_family, client->addr_ptr->ai_socktype,
         client->addr_ptr->ai_protocol);
-    ASSERT(client->local_node->sock != INVALID_SOCKET, 
+    ASSERT(sock != INVALID_SOCKET, 
     { 
         client->error_state = CLIENT_SOCKET_FAIL;
         goto fail; 
     }, "Failed to create socket: %d\n", socket_errno());
     
+    setup_mt_socket(&client->local_node->mt_sock, sock);
     server_node_init(&client->server_node);
     client->local_node->server_node = &client->server_node;
 
@@ -88,10 +92,10 @@ fail:
     if (error_state != NULL)
         *error_state = client->error_state;
     if (client->local_node != NULL)
-        free(client->local_node);
+        tagged_free(client->local_node, TAG_CLIENT_NODE);
     if (client->addr_ptr != NULL)
         freeaddrinfo(client->addr_ptr);
-    free(client);
+    tagged_free(client, TAG_BULB_CLIENT);
     return NULL;
 }
 
@@ -138,7 +142,7 @@ bool client_connect(struct bulb_client* client)
     ASSERT(client, return false);
     ASSERT(!client->is_connected, return false);
 
-    int result = connect(client->local_node->sock, client->addr_ptr->ai_addr, 
+    int result = connect(client->local_node->mt_sock.socket, client->addr_ptr->ai_addr, 
         (int)client->addr_ptr->ai_addrlen);
     ASSERT(result != SOCKET_ERROR, 
     { 
@@ -172,13 +176,13 @@ bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinf
     userinfo.major = MAJOR;
     userinfo.minor = MINOR;
     userinfo.patch = PATCH;
-    ASSERT(userinfo_obj_write(client->local_node->sock, &userinfo), 
+    ASSERT(userinfo_obj_write(&client->local_node->mt_sock, &userinfo), 
     { 
         client->error_state = CLIENT_AUTH_FAIL;
         return false; 
-    }, "The server connection has closed unexpectedly.\n");
+    }, "The server connection has closed unexpectedly while authenticating.\n");
 
-    client->local_node->userinfo = quick_malloc(sizeof(struct userinfo_obj));
+    client->local_node->userinfo = tagged_malloc(sizeof(struct userinfo_obj), TAG_BULB_OBJ);
     memcpy(client->local_node->userinfo, &userinfo, sizeof(struct userinfo_obj));
 
     while (!client->local_node->validated);
@@ -209,7 +213,7 @@ bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success
             *cmd_success = result;
         return true;
     }
-    message_obj_write(client->local_node->sock, client->local_node->userinfo->name, msg);
+    message_obj_write(&client->local_node->mt_sock, client->local_node->userinfo->name, msg);
     return false;
 }
 
@@ -231,7 +235,7 @@ void client_free(struct bulb_client* client)
 
     if (client->addr_ptr != NULL)
         freeaddrinfo(client->addr_ptr);
-    free(client);
+    tagged_free(client, TAG_BULB_CLIENT);
 
     bulb_cmds_cleanup();
 }

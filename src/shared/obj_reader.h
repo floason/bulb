@@ -10,4 +10,4 @@
 
 // Read a Bulb object from a socket. The object is dynamically allocated and thus
 // must be released from memory afterwards.
-struct bulb_obj* bulb_obj_read(SOCKET sock, bool* socket_closed);
+struct bulb_obj* bulb_obj_read(struct mt_socket* sock, bool* socket_closed);

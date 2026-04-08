@@ -16,13 +16,13 @@
 #include "connect_obj.h"
 
 // Read a userinfo_obj object. Returns NULL on failure.
-struct bulb_obj* userinfo_obj_read(SOCKET sock, struct bulb_obj* header, size_t min_size)
+struct bulb_obj* userinfo_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size)
 {
     return bulb_obj_template_recv(sock, header, min_size);
 }
 
 // Write a userinfo_obj object. Returns false on failure.
-bool userinfo_obj_write(SOCKET sock, struct userinfo_obj* obj)
+bool userinfo_obj_write(struct mt_socket* sock, struct userinfo_obj* obj)
 {
     return bulb_obj_write(sock, (struct bulb_obj*)obj);
 }
@@ -38,14 +38,14 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     // Reject clients with empty usernames.
     if (strlen(obj->name) == 0)
     {
-        stdout_obj_write(client->sock, "Your username cannot be empty!\n");
+        stdout_obj_write(&client->mt_sock, "Your username cannot be empty!\n");
         goto kick_client;
     }
 
     // Reject clients with non-renderable usernames.
     if (!str_isprint(obj->name))
     {
-        stdout_obj_write(client->sock, "Your username must contain only displayable characters!\n");
+        stdout_obj_write(&client->mt_sock, "Your username must contain only displayable characters!\n");
         goto kick_client;
     }
 
@@ -61,7 +61,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         snprintf(client_buffer, sizeof(client_buffer), "Your client version is %d.%d.%d, however the "  \
             "server expects a client version of %d.%d.%d!\n", obj->major, obj->minor, obj->patch, MAJOR,
             MINOR, PATCH);
-        stdout_obj_write(client->sock, client_buffer);
+        stdout_obj_write(&client->mt_sock, client_buffer);
 
         // Report the invalid version of the connecting client to the server 
         // console.
@@ -73,11 +73,12 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     }
 
     // Reject the client if it has the same username as another user.
-    LOOP_CLIENTS(server->clients, client, node,
+    LOOP_CLIENTS(server, client, node,
     {
         if (strcmp(client->userinfo->name, node->userinfo->name) == 0)
         {
-            stdout_obj_write(client->sock, "Sorry, another client is already connected with that name!\n");
+            stdout_obj_write(&client->mt_sock, 
+                "Sorry, another client is already connected with that name!\n");
             fprintf(stderr, "Client \"%s\" (%s) failed to connect as the given username is already "    \
                 "occupied\n", client->userinfo->name, ip_str);
             goto kick_client;
@@ -86,20 +87,20 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
 
     // Validate the client and log its entry.
     client->validated = true;
-    LOOP_CLIENTS(server->clients, NULL, node,
+    LOOP_CLIENTS(server, NULL, node,
     {
         char buffer[64 + MAX_NAME_LENGTH];
         snprintf(buffer, sizeof(buffer), "Client \"%s\" has connected\n", client->userinfo->name);
-        stdout_obj_write(node->sock, buffer);
+        stdout_obj_write(&node->mt_sock, buffer);
     });
-    connect_obj_write(client->sock, NULL, true);
+    connect_obj_write(&client->mt_sock, NULL, true);
     printf("Client \"%s\" (%s) has connected\n", client->userinfo->name, ip_str);
 
     // Synchronise the client list on each client.
-    LOOP_CLIENTS(server->clients, client, node, 
+    LOOP_CLIENTS(server, client, node, 
     {
-        connect_obj_write(client->sock, node->userinfo, false);
-        connect_obj_write(node->sock, client->userinfo, false);
+        connect_obj_write(&client->mt_sock, node->userinfo, false);
+        connect_obj_write(&node->mt_sock, client->userinfo, false);
     });
     
     return;

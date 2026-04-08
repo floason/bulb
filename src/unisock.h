@@ -4,6 +4,7 @@
 #pragma once
 
 #include <errno.h>
+#include <threads.h>
 
 #include "util.h"
 
@@ -21,6 +22,9 @@
 #   define SHUT_RD          SD_RECEIVE
 #   define SHUT_WR          SD_SEND
 #   define SHUT_RDWR        SD_BOTH
+    
+    // Define socket errors here.
+#   define SOCKET_CLOSED    WSAENOTCONN
 
 // Define POSIX-specific macros and headers.
 #elif defined __UNIX__
@@ -40,14 +44,27 @@
 
 #   define SOCKET_ERROR     -1
 #   define INVALID_SOCKET   -1
+
+    // Define socket errors here.
+#   define SOCKET_CLOSED    ENOTCONN
 #endif
 
-#ifndef MIN
-#   define MIN(A, B) (((A) < (B)) ? (A) : (B))
-#endif
-#ifndef MAX
-#   define MAX(A, B) (((A) > (B)) ? (A) : (B))
-#endif
+// Due to the multithreaded nature of my code, I decided to create a struct that 
+// encapsulates a SOCKET and couples it with read/write mutexes.
+struct mt_socket
+{
+    SOCKET socket;
+    mtx_t read_lock;
+    mtx_t write_lock;
+};
+
+static inline void setup_mt_socket(struct mt_socket* obj, SOCKET sock)
+{
+    ASSERT(sock, return);
+    obj->socket = sock;
+    mtx_init(&obj->read_lock, mtx_plain);
+    mtx_init(&obj->write_lock, mtx_plain);
+}
 
 static inline int socket_errno()
 {

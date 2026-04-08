@@ -28,19 +28,36 @@
     if (!(EXP))                                     \
     {                                               \
         if (NUM_ARGS(__VA_ARGS__) > 0)              \
-            _unisock_error(stderr, ##__VA_ARGS__ ); \
+            _assert_error(stderr, ##__VA_ARGS__ );  \
         assert(0);                                  \
         ASSERT_SCOPE;                               \
     }                                               \
     
+#ifndef MIN
+#   define MIN(A, B) (((A) < (B)) ? (A) : (B))
+#endif
+#ifndef MAX
+#   define MAX(A, B) (((A) > (B)) ? (A) : (B))
+#endif
+
 /* DO NOT USE! */
-static inline void _unisock_error(FILE* stream, ...)
+static inline void _assert_error(FILE* stream, ...)
 {
     va_list argv;
     va_start(argv, stream);
     const char* format = va_arg(argv, const char*);
     vfprintf(stream, format, argv);
     va_end(argv);
+}
+
+static inline int str_isprint(const char* str)
+{
+    for (int i = 0, len = strlen(str); i < len; i++)
+    {
+        if (!isprint(str[i]))
+            return false;
+    }
+    return true;
 }
 
 static inline void* quick_calloc(size_t count, size_t size)
@@ -56,12 +73,27 @@ static inline void* quick_malloc(size_t size)
     return quick_calloc(1, size);
 }
 
-static inline int str_isprint(const char* str)
+/*
+ * The functions below are used with wrappers around calloc()/free() which
+ * effectively tag all dynamically-allocated chunks of memory.
+*/
+
+enum tags
 {
-    for (int i = 0, len = strlen(str); i < len; i++)
-    {
-        if (!isprint(str[i]))
-            return false;
-    }
-    return true;
-}
+    TAG_FIRST,
+    TAG_TEMP_OBJ,
+
+    TAG_TRIE,
+    TAG_BULB_CLIENT,
+    TAG_BULB_SERVER,
+    TAG_CLIENT_NODE,
+    TAG_BULB_OBJ,
+
+    TAG_LAST
+};
+
+void* tagged_calloc(size_t count, size_t size, int tag);
+
+void* tagged_malloc(size_t size, int tag);
+
+void tagged_free(void* ptr, int tag);
