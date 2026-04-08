@@ -16,9 +16,9 @@
 #include "connect_obj.h"
 
 // Read a userinfo_obj object. Returns NULL on failure.
-struct bulb_obj* userinfo_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size)
+struct bulb_obj* userinfo_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size)
 {
-    return bulb_obj_template_recv(sock, header, min_size);
+    return bulb_obj_template_recv(sock, header, size);
 }
 
 // Write a userinfo_obj object. Returns false on failure.
@@ -66,7 +66,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         // Report the invalid version of the connecting client to the server 
         // console.
         fprintf(stderr, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d (server " \
-            "expects version %d.%d.%d\n", client->userinfo->name, ip_str, obj->major, obj->minor, 
+            "expects version %d.%d.%d)\n", client->userinfo->name, ip_str, obj->major, obj->minor, 
             obj->patch, MAJOR, MINOR, PATCH);
 
         goto kick_client;

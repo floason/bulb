@@ -23,7 +23,7 @@ struct connect_obj
 };
 
 // Read a connect_obj object. Returns NULL on failure.
-struct bulb_obj* connect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size);
+struct bulb_obj* connect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size);
 
 // Write a connect_obj object. userinfo can be NULL if validate_only is true. 
 // Returns false on failure.

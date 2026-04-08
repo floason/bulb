@@ -13,9 +13,9 @@
 #include "userinfo_obj.h"
 
 // Read a disconnect_obj object. Returns NULL on failure.
-struct bulb_obj* disconnect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size)
+struct bulb_obj* disconnect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size)
 {
-    return bulb_obj_template_recv(sock, header, min_size);
+    return bulb_obj_template_recv(sock, header, size);
 }
 
 // Write a disconnect_obj object. Returns false on failure.

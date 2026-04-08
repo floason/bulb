@@ -4,10 +4,11 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "unisock.h"
 #include "bulb_obj.h"
 
 // Read a Bulb object from a socket. The object is dynamically allocated and thus
 // must be released from memory afterwards.
-struct bulb_obj* bulb_obj_read(struct mt_socket* sock, bool* socket_closed);
+struct bulb_obj* bulb_obj_read(struct mt_socket* sock, char* error_msg, size_t len);

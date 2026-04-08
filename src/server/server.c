@@ -20,11 +20,14 @@ static int _server_client_thread(void* c)
 
     for (;;)
     {
-        bool socket_closed;
-        struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, &socket_closed);
+        char error_msg[MAX_ERROR_LENGTH + 1] = { 0 };
+        struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, error_msg, sizeof(error_msg));
         if (obj == NULL)
         {
-            server_disconnect_client(server, client);
+            if (error_msg[0] != '\0')
+                server_kick(server, client, error_msg);
+            else
+                server_disconnect_client(server, client);
             return 0;
         }
 

@@ -22,7 +22,7 @@ struct disconnect_obj
 };
 
 // Read a disconnect_obj object. Returns NULL on failure.
-struct bulb_obj* disconnect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size);
+struct bulb_obj* disconnect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size);
 
 // Write a disconnect_obj object. Returns false on failure.
 bool disconnect_obj_write(struct mt_socket* sock, const char* name);

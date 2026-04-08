@@ -20,9 +20,9 @@
 #endif
 
 // Read a message_obj object. Returns NULL on failure.
-struct bulb_obj* message_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size)
+struct bulb_obj* message_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size)
 {
-    return bulb_obj_template_recv(sock, header, min_size);
+    return bulb_obj_template_recv(sock, header, size);
 }
 
 // Write a message_obj object. Returns false on failure.

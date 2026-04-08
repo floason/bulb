@@ -18,9 +18,9 @@
 #endif
 
 // Read a stdout_obj. Returns NULL on failure.
-struct bulb_obj* stdout_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size)
+struct bulb_obj* stdout_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size)
 {
-    struct stdout_obj* obj = (struct stdout_obj*)bulb_obj_template_recv(sock, header, min_size);
+    struct stdout_obj* obj = (struct stdout_obj*)bulb_obj_template_recv(sock, header, size);
     if (obj == NULL)
         return NULL;
     obj->buffer[header->size - sizeof(struct stdout_obj) - 1] = '\0';

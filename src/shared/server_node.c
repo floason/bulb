@@ -124,8 +124,8 @@ void server_kick(struct server_node* server, struct client_node* client, const c
     // Log the client's departure in the server console and to the client itself.
     char ip_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
-    printf("Client \"%s\" (%s) has been kicked from the server: %s", client->userinfo->name, ip_str, 
-        msg);
+    fprintf(stderr, "Client \"%s\" (%s) has been kicked from the server: %s", client->userinfo->name, 
+        ip_str, msg);
     stdout_obj_write(&client->mt_sock, msg);
     
     // Write to all other clients that this user has been kicked.

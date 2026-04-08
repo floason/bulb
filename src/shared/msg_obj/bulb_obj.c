@@ -11,8 +11,12 @@
 
 // This is a basic template for reading a Bulb object that has no additional reading
 // requirements. Returns NULL on failure.
-struct bulb_obj* bulb_obj_template_recv(struct mt_socket* sock, struct bulb_obj* header, size_t min_size)
+struct bulb_obj* bulb_obj_template_recv(struct mt_socket* sock, struct bulb_obj* header, size_t size)
 {    
+    // Validate the size of the object first.
+    if (header->size != size)
+        return NULL;
+
     // Read the socket stream into a buffer and copy its contents into a dynamically
     // allocated object. This is the standard method for reading objects.
     char buffer[RECV_BUFFER_SIZE];
@@ -26,14 +30,6 @@ struct bulb_obj* bulb_obj_template_recv(struct mt_socket* sock, struct bulb_obj*
             return NULL;
         offset += read;
     } while (header->size > offset);
-
-    // If the current offset is below the minimum size required, the object must be
-    // immediately invalidated as using it can result in a segmentation fault.
-    if (offset < min_size)
-    {
-        tagged_free(obj, TAG_BULB_OBJ);
-        return NULL;
-    }
 
     return obj;
 }

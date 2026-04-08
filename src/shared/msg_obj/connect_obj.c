@@ -14,9 +14,9 @@
 #include "server_node.h"
 
 // Read a connect_obj object. Returns NULL on failure.
-struct bulb_obj* connect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size)
+struct bulb_obj* connect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size)
 {
-    return bulb_obj_template_recv(sock, header, min_size);
+    return bulb_obj_template_recv(sock, header, size);
 }
 
 // Write a connect_obj object. userinfo can be NULL if validate_only is true. 

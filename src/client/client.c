@@ -23,10 +23,12 @@ static int _client_thread(void* c)
 
     for (;;)
     {
-        bool socket_closed;
-        struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, &socket_closed);
+        char error_msg[MAX_ERROR_LENGTH + 1] = { 0 };
+        struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, error_msg, sizeof(error_msg));
         if (obj == NULL)
         {
+            if (error_msg[0] != '\0')
+                fprintf(stderr, "Client failed to read message object from server: %s\n", error_msg);
             if (!client->bulb_client->disconnect_handled)
                 client_throw_critical_error(client->bulb_client, CLIENT_FORCE_DISCONNECT, NULL);
             return 0;

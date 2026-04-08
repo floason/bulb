@@ -11,37 +11,27 @@
 #include "disconnect_obj.h"
 #include "message_obj.h"
 
-// Handle reading a root Bulb object.
-static struct bulb_obj* _bulb_obj_read(struct mt_socket* sock, struct bulb_obj* header)
-{
-    // We need to flush the bulb_obj object out of the buffer first.
-    char discard[sizeof(struct bulb_obj)];
-    recv(sock->socket, discard, sizeof(discard), 0);
-    
-    struct bulb_obj* obj = tagged_malloc(sizeof(struct bulb_obj), TAG_BULB_OBJ);
-    memcpy(obj, header, sizeof(struct bulb_obj));
-    return obj;
-}
-
 // Read a Bulb object from a socket. The object is dynamically allocated and thus
 // must be released from memory afterwards.
-struct bulb_obj* bulb_obj_read(struct mt_socket* sock, bool* socket_closed)
+struct bulb_obj* bulb_obj_read(struct mt_socket* sock, char* error_msg, size_t len)
 {
     // The purpose of this function is to read a single object that's currently
     // buffered. Streamed data buffered by multiple send() calls may be read in
     // only a single recv() call, so the very first read this function does will
     // only peek into the socket stream. The final number of bytes that will be
     // read will only correspond to the data size of the final object.
-    *socket_closed = false;
+    memset(error_msg, 0, len);
 
+    // Peek into the socket stream to read the object header. In the case that 
+    // significant data fragmentation occurs (although this should be very unlikely), 
+    // this function must busywait until the buffer is filled.
     char buffer[sizeof(struct bulb_obj)];
-    int read = recv(sock->socket, buffer, sizeof(buffer), MSG_PEEK);
-
-    // If read does not return a valid length, the connection has likely been closed.
-    if (read <= 0)
+    int read;
+    while ((read = recv(sock->socket, buffer, sizeof(buffer), MSG_PEEK)) < (int)sizeof(struct bulb_obj))
     {
-        *socket_closed = true;
-        return NULL;
+        // If read does not return a valid length, the connection has likely been closed.
+        if (read <= 0)
+            return NULL;
     }
     
     // A switch table is used to select the exact read function to use for reading the
@@ -52,11 +42,25 @@ struct bulb_obj* bulb_obj_read(struct mt_socket* sock, bool* socket_closed)
     switch (header->type)
     {
         case BULB_OBJ:
-            return _bulb_obj_read(sock, header);
+            // This object should not be received whatsoever.
+#ifdef CLIENT
+            ASSERT(false, return NULL, "Test object was found in stream")
+#else
+            snprintf(error_msg, len, "Client attempted to send test object\n");
+#endif
+            return NULL;
         case BULB_STDOUT:
-            // + 1 is added to the minimum size to provide buffer space for the NUL
-            // character.
-            return stdout_obj_read(sock, header, sizeof(struct stdout_obj) + 1);
+#ifdef SERVER
+            // Because this object is of variable length and incorporates zero character 
+            // filtering, this object must NOT be sent by client code as it is inherently 
+            // dangerous.
+            snprintf(error_msg, len, "Client attempted to send stdout_obj\n");
+            return NULL;
+#endif
+
+            // It is difficult to perform size validations due to the variadic size of 
+            // this object.
+            return stdout_obj_read(sock, header, header->size);
         case BULB_USERINFO:
             return userinfo_obj_read(sock, header, sizeof(struct userinfo_obj));
         case BULB_CONNECT:
@@ -66,6 +70,11 @@ struct bulb_obj* bulb_obj_read(struct mt_socket* sock, bool* socket_closed)
         case BULB_MESSAGE:
             return message_obj_read(sock, header, sizeof(struct message_obj));
         default:
+#ifdef CLIENT
             ASSERT(false, return NULL, "Invalid obj type %d\n", header->type);
+#else
+            snprintf(error_msg, len, "Client attempted to send invalid obj type %d\n", header->type);
+#endif
+            return NULL;
     }
 }

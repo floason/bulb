@@ -22,7 +22,7 @@ struct message_obj
 };
 
 // Read a message_obj object. Returns NULL on failure.
-struct bulb_obj* message_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size);
+struct bulb_obj* message_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size);
 
 // Write a message_obj object. Returns false on failure.
 bool message_obj_write(struct mt_socket* sock, const char* name, const char* msg);

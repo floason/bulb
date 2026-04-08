@@ -30,7 +30,7 @@ struct userinfo_obj
 };
 
 // Read a userinfo_obj object. Returns NULL on failure.
-struct bulb_obj* userinfo_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t min_size);
+struct bulb_obj* userinfo_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size);
 
 // Write a userinfo_obj object. Returns false on failure.
 bool userinfo_obj_write(struct mt_socket* sock, struct userinfo_obj* obj);
