@@ -26,6 +26,10 @@
     // Define socket errors here.
 #   define SOCKET_CLOSED    WSAENOTCONN
 
+    // This is used to suppress SIGPIPE on POSIX, however this macro does not exist
+    // in Winsock2.
+#   define MSG_NOSIGNAL 0
+
 // Define POSIX-specific macros and headers.
 #elif defined __UNIX__
 #   include <unistd.h>

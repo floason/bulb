@@ -44,20 +44,18 @@ bool bulb_obj_write(struct mt_socket* sock, struct bulb_obj* obj)
     // function.
     mtx_lock(&sock->write_lock);
 
-    bool return_value = true;
+    bool return_value = false;
     size_t remaining = obj->size;
     do
     {
         int written = send(sock->socket, (const char*)obj + (obj->size - remaining), 
-            MIN(remaining, RECV_BUFFER_SIZE), 0);
+            MIN(remaining, RECV_BUFFER_SIZE), MSG_NOSIGNAL);
         if (written == SOCKET_ERROR)
-        {
-            return_value = false;
             goto finish;
-        }
         remaining -= written;
     } while (remaining > 0);
-
+    
+    return_value = true;
 finish:
     mtx_unlock(&sock->write_lock);
     return return_value;
