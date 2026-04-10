@@ -6,6 +6,8 @@
 #include <memory.h>
 #include <string.h>
 #include <ctype.h>
+#include <threads.h>
+#include <stdatomic.h>
 
 #include "bulb_version.h"
 #include "client.h"         // MUST BE INCLUED BEFORE "console_io.h"!
@@ -25,6 +27,9 @@ static const char* COLOR_DEFAULT                    = "\x1B[39m";
 // <SEQ>NAME<SEQ>\0
 static char name_buffer[COLOR_LENGTH + MAX_NAME_LENGTH + COLOR_LENGTH + 1];
 
+static mtx_t print_message_lock;
+static atomic_bool print_message_lock_busy;
+
 static void _cleanup(struct bulb_client* client)
 {
     cleanup_console_mode();
@@ -32,7 +37,11 @@ static void _cleanup(struct bulb_client* client)
 }
 
 static void _print_message(struct bulb_client* client, const char* message)
-{
+{   
+    // Use mutex locking here to ensure that messages are outputted synchronously.
+    atomic_store(&print_message_lock_busy, true);
+    mtx_lock(&print_message_lock);
+    
     // The current line length is calculated using the following format:
     // NAME: MESSAGE
     unsigned line_length = strlen(client->local_node->userinfo->name) + 2 + input_buffer_w;
@@ -55,6 +64,9 @@ static void _print_message(struct bulb_client* client, const char* message)
     // input buffer again.
     if (waiting_for_input)
         printf("%s: %s", name_buffer, input_buffer);
+
+    mtx_unlock(&print_message_lock);
+    atomic_store(&print_message_lock_busy, false);
 }
 
 static bool _client_exception_handler(struct bulb_client* client, 
@@ -99,6 +111,7 @@ static bool _client_exception_handler(struct bulb_client* client,
 
 int main()
 {
+    mtx_init(&print_message_lock, mtx_plain);
     enable_ansi_sequences();
     printf_clear_screen();
     printf("[CLIENT] ");
@@ -157,6 +170,7 @@ new_iteration:
         // Wait for next user input. This doubles as a busywait loop on POSIX
         // systems, as the use of ESC[6n in an asynchronous thread conflicts with
         // this loop repeatedly blocking for user input itself.
+        while (atomic_load(&print_message_lock_busy));
         int c = read_stdin_char();
         if (c == STDIN_EMPTY)
             continue;
