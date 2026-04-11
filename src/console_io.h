@@ -28,6 +28,9 @@ bool enable_ansi_sequences();
 // Clean the entire screen.
 void printf_clear_screen();
 
+// Move the cursor to the beginning of the next line.
+void start_next_console_line();
+
 // Windows: disables ENABLE_LINE_INPUT, which disables line buffering.
 // Linux: disables canonical mode and console echo on input, which
 // disables line buffering. Output buffering is also disabled.

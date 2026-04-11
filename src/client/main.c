@@ -50,10 +50,12 @@ static void _print_message(struct bulb_client* client, const char* message)
     // the screen fines.
     unsigned cursor_x;
     unsigned cursor_y;
+    unsigned num_columns;
     get_console_cursor_pos(&cursor_x, &cursor_y);
     if (waiting_for_input)
     {
-        int lines = line_length / get_num_columns_for_console() + 1;
+        num_columns = get_num_columns_for_console();
+        int lines = line_length / num_columns + 1;
         clear_lines_from_y(cursor_y - lines + 1, lines);
     }
 
@@ -63,7 +65,11 @@ static void _print_message(struct bulb_client* client, const char* message)
     // If we had to do some console cleanup beforehand, print the current 
     // input buffer again.
     if (waiting_for_input)
+    {
         printf("%s: %s", name_buffer, input_buffer);
+        if (line_length % num_columns == 0)
+            start_next_console_line();
+    }
 
     mtx_unlock(&print_message_lock);
     atomic_store(&print_message_lock_busy, false);
@@ -226,6 +232,17 @@ new_iteration:
                     if (isprint(c))
                         input_buffer[input_buffer_w++] = c;
                     putchar(c);
+
+                    // Due to backwards-compatibility with VT100 functionality,
+                    // inputting the last character that fits on the current column
+                    // row does not actually send the cursor to the next line. This
+                    // wrapping behaviour only occurs when the next inputted
+                    // character only fits on the next line instead. Thus, the 
+                    // former functionality must be handled manually.
+                    int num_columns = get_num_columns_for_console();
+                    int lines = input_buffer_w / num_columns + 1;
+                    if ((strlen(userinfo.name) + 2 + input_buffer_w) % num_columns == 0)
+                        start_next_console_line();
                 }
                 break;
         }

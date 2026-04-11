@@ -51,6 +51,12 @@ void printf_clear_screen()
     printf("\x1B[2J\x1B[3J\x1B[1;1H");
 }
 
+// Move the cursor to the beginning of the next line.
+void start_next_console_line()
+{
+    printf("\x1B[E");
+}
+
 // Windows: disables ENABLE_LINE_INPUT, which disables line buffering.
 // Linux: disables canonical mode and console echo on input, which
 // disables line buffering. Output buffering is also disabled.
@@ -163,7 +169,7 @@ int get_num_columns_for_console()
     printf("\x1B[%d;65535H", cached_y + 1);
     get_console_cursor_pos(&max_columns, &throwaway_y);
     printf("\x1B[%d;%dH", cached_y + 1, cached_x + 1);
-    return max_columns;
+    return max_columns + 1;
 #endif
 
     ASSERT(false, return -1, "Operating system not supported!\n");
