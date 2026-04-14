@@ -10,37 +10,73 @@
 #include "server.h"
 #include "obj_reader.h"
 #include "obj_process.h"
+#include "userinfo_obj.h"
 
-// A thread is created for this function whenever a new client connection 
-// is started for a given client instance.
-static int _server_client_thread(void* c)
+// Start reading and processing message objects in a new thread for a given client
+// connection.
+static int _server_client_recv_thread(void* c)
 {
     struct client_node* client = (struct client_node*)c;
     struct server_node* server = client->server_node;
 
+    char error_msg[MAX_ERROR_LENGTH + 1] = { 0 };
     for (;;)
     {
-        char error_msg[MAX_ERROR_LENGTH + 1] = { 0 };
         struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, error_msg, sizeof(error_msg));
         if (obj == NULL)
         {
             if (error_msg[0] != '\0')
                 server_kick(server, client, error_msg);
             else
-                server_disconnect_client(server, client);
+                server_disconnect_client(server, client, true);
+        }
+
+        if (client_flagged_for_deletion(client))
+        {
+            client_set_status(client, CLIENT_READY_TO_DELETE);
             return 0;
         }
 
         ASSERT(bulb_process_object(obj, server, client), return 0,
             "Failed to process Bulb object of type %d\n", obj->type);
+    }
+}
 
-        // A processed object may have marked the client node object for
-        // deletion. If this is the case, disconnect the client.
-        if (client->delete)
-        {
-            server_disconnect_client(server, client);
+// Handle writing objects in a new thread for a given client connection asynchronously
+// from the main client object listen thread, so as to not disrupt the backbone client
+// thread if it attempts to communicate with other clients (message_obj in particular).
+static int _server_client_send_thread(void* c)
+{
+    struct client_node* client = (struct client_node*)c;
+    struct server_node* server = client->server_node;
+
+    for (;;)
+    {
+        mtx_lock(&client->send_thread_lock);
+        while (!client_flagged_for_deletion(client) && QUEUE_EMPTY(client->mt_sock.send_queue))
+            cnd_wait(&client->mt_sock.send_signal, &client->send_thread_lock);
+
+        // If the client is flagged for deletion, exit.
+        if (client_flagged_for_deletion(client))
             return 0;
+
+        // Handle writing whatever is currently enqueued in the client socket's send
+        // queue. Everything must be written before the send thread mutex is unlocked,
+        // to allow for complete objects to be transmitted before any client disconnect
+        // may be handled.
+        do 
+        {
+            QUEUE_DEQUEUE(struct mt_socket_write_node* node, client->mt_sock.send_queue, 
+                client->mt_sock.send_queue_tail);
+
+            int written = send(client->mt_sock.socket, node->data, node->len, MSG_NOSIGNAL);
+            tagged_free(node, TAG_TEMP);
+            if (written == SOCKET_ERROR)
+                return 0;
         }
+        while (!QUEUE_EMPTY(client->mt_sock.send_queue));
+
+        mtx_unlock(&client->send_thread_lock);
     }
 }
 
@@ -65,8 +101,9 @@ static int _server_listen_thread(void* s)
         }, "Failed to accept new client connection: %d\n", socket_errno());
 
         setup_mt_socket(&node->mt_sock, sock);
-        server_connect_client(&server->server_node, node);
-        thrd_create(&node->thread, _server_client_thread, (void*)node);
+        mtx_init(&node->send_thread_lock, mtx_plain);
+        thrd_create(&node->recv_thread, _server_client_recv_thread, (void*)node);
+        thrd_create(&node->send_thread, _server_client_send_thread, (void*)node);
 
         // Periodically deallocate clients marked for deletion.
         server_free_flagged_clients(&server->server_node);

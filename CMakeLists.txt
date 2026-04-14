@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(bulb LANGUAGES C VERSION 0.1.2)
+project(bulb LANGUAGES C VERSION 0.1.3)
 
 add_library(bulb_interface INTERFACE)
 target_compile_features(bulb_interface INTERFACE c_std_11)
@@ -34,8 +34,9 @@ else()
     target_link_libraries(bulb_interface INTERFACE Curses::Curses)
 endif()
 
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin/$<CONFIG>")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin/$<CONFIG>")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin/$<CONFIG>")
+set(BUILD_DIR_NAME "$<IF:$<BOOL:$<CONFIG>>,$<CONFIG>,Base>")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin/${BUILD_DIR_NAME}")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin/${BUILD_DIR_NAME}")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin/${BUILD_DIR_NAME}")
 
 add_subdirectory(src)

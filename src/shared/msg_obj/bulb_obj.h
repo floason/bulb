@@ -27,6 +27,10 @@ struct bulb_obj
 {
     enum bulb_obj_type type;
     size_t size;
+
+    // Used for linking message objects in an object queue.
+    struct bulb_obj* next;
+    struct bulb_obj* prev;
 };
 
 // This is a basic template for reading a Bulb object that has no additional reading

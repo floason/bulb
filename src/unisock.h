@@ -55,11 +55,25 @@
 
 // Due to the multithreaded nature of my code, I decided to create a struct that 
 // encapsulates a SOCKET and couples it with read/write mutexes.
+
+struct mt_socket_write_node
+{
+    struct mt_socket_write_node* prev;
+    struct mt_socket_write_node* next;
+    size_t len;
+    
+    char data[];
+};
+
 struct mt_socket
 {
     SOCKET socket;
     mtx_t read_lock;
     mtx_t write_lock;
+
+    cnd_t send_signal;
+    struct mt_socket_write_node* send_queue;
+    struct mt_socket_write_node* send_queue_tail;
 };
 
 static inline void setup_mt_socket(struct mt_socket* obj, SOCKET sock)
@@ -68,6 +82,7 @@ static inline void setup_mt_socket(struct mt_socket* obj, SOCKET sock)
     obj->socket = sock;
     mtx_init(&obj->read_lock, mtx_plain);
     mtx_init(&obj->write_lock, mtx_plain);
+    cnd_init(&obj->send_signal);
 }
 
 static inline int socket_errno()

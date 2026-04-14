@@ -37,7 +37,7 @@ void disconnect_obj_process(struct disconnect_obj* obj,
     {
         if (strcmp(obj->name, node->userinfo->name) == 0)
         {
-            server_disconnect_client(server, node);
+            server_disconnect_client(server, node, true);
             return;
         }
     })

@@ -39,21 +39,21 @@ void connect_obj_process(struct connect_obj* obj, struct server_node* server, st
 
     // Because of the aforementioned precondition, we can mark this client as validated, if not done so
     // already.
+    struct client_node* node = client;
     if (obj->validate_only)
     {
-        client->validated = true;
+        client_set_status(client, CLIENT_VALIDATED);
         goto finish;
     }
 
-    struct client_node* node = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
+    node = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
     node->mt_sock.socket = INVALID_SOCKET;
-    node->validated = true;
+    node->status = CLIENT_VALIDATED;
     node->server_node = server;
     node->userinfo = tagged_malloc(sizeof(struct userinfo_obj), TAG_BULB_OBJ);
     memcpy(node->userinfo, &obj->userinfo, sizeof(struct userinfo_obj));
- 
-    server_connect_client(server, node);
 
 finish:
+    server_connect_client(server, node);
     tagged_free(obj, TAG_BULB_OBJ);
 }

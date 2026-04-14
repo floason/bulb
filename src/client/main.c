@@ -87,6 +87,7 @@ static bool _client_exception_handler(struct bulb_client* client,
         // Clean up and exit once the client thread terminates.
         case CLIENT_FORCE_DISCONNECT:
             puts("\n\nThe server connection has closed unexpectedly.");
+        case CLIENT_AUTH_FAIL:
         case CLIENT_DISCONNECT:
             client->disconnect_handled = true;
             _cleanup(client);
@@ -128,6 +129,15 @@ int main()
     printf("Server address: ");
     fgets(hostname, sizeof(hostname), stdin);
     hostname[strlen(hostname) - 1] = '\0';
+
+    // If the host name given is empty, default to localhost.
+    for (int i = 0; i < sizeof(hostname); ++i)
+    {
+        if (hostname[i] == '\0')
+            strcpy(hostname, "localhost");
+        else if (!isspace(hostname[i]))
+            break;
+    }
 
     // Get the port for the completed socket and strip the newline character.
     char port[7] = { 0 };   // Max digits in 16-bit port number + \n + NUL

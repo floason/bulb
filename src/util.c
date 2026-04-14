@@ -27,13 +27,7 @@ void* tagged_calloc(size_t count, size_t size, int tag)
     ptr->count = count;
     ptr->size = size;
     
-    if (tagged_head == NULL)
-        tagged_head = ptr;
-    ptr->prev = tagged_tail;
-    if (ptr->prev != NULL)
-        ptr->prev->next = ptr;
-    tagged_tail = ptr;
-
+    LINKED_LIST_ADD(ptr, tagged_head, tagged_tail);
     return (void*)((uintptr_t)ptr + sizeof(struct tagged_chunk));
 }
 
@@ -50,15 +44,7 @@ void tagged_free(void* ptr, int tag)
     ASSERT(chunk->magic == TAGGED_MAGIC, return);
     ASSERT(chunk->tag == tag, return);
 
-    if (chunk->prev == NULL)
-        tagged_head = chunk->next;
-    else
-        chunk->prev->next = chunk->next;
-    if (chunk->next == NULL)
-        tagged_tail = chunk->prev;
-    else
-        chunk->next->prev = chunk->prev;
-
+    LINKED_LIST_REMOVE(chunk, tagged_head, tagged_tail);
     chunk->magic = TAG_FIRST;
     free(chunk);
 }

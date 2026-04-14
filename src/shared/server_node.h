@@ -10,19 +10,25 @@
 #include <stdbool.h>
 
 #include "unisock.h"
-#include "client_node.h"
-
-#define LOOP_CLIENTS(SERVER, EXCEPT, ID, SCOPE)                             \
-    {                                                                       \
-        struct client_node* ID = SERVER->clients;                           \
-        while (ID != NULL)                                                  \
-        {                                                                   \
-            if (ID != EXCEPT && ID->validated && !ID->flag_for_deletion)    \
-                SCOPE;                                                      \
-            ID = ID->next;                                                  \
-        }                                                                   \
-    }            
+#include "trie.h"
+#include "client_node.h"   
     
+#define LOOP_CLIENTS(SERVER, EXCEPT, ID, SCOPE)                                 \
+    {                                                                           \
+        TRIE_DFS(SERVER->clients, trie##ID,                                     \
+        {                                                                       \
+            mtx_lock(&SERVER->free_flagged_clients_mutex);                      \
+        },                                                                      \
+        {                                                                       \
+            struct client_node* ID = (struct client_node*)trie##ID;             \
+            if (ID != EXCEPT && ID->status == CLIENT_VALIDATED)                 \
+                SCOPE;                                                          \
+        },                                                                      \
+        {                                                                       \
+            mtx_unlock(&SERVER->free_flagged_clients_mutex);                    \
+        });                                                                     \
+    }                                                                       
+
 struct bulb_server;
 
 struct server_node
@@ -34,15 +40,17 @@ struct server_node
     // TODO: populate with server details such as name
 
     unsigned number_connected;
+    mtx_t free_flagged_clients_mutex;
 
-    // List of actual connected clients.
-    struct client_node* clients;        // The first node will always be the local client in client code!
-    struct client_node* clients_tail;   
-    
+    // Dictionary of actual connected clients.
+    struct trie* clients;
+
     // List of clients flagged for deletion.
     struct client_node* flagged_clients_list;
     struct client_node* flagged_clients_list_tail;
 };
+
+typedef void (*loop_clients_func)(struct server_node* server, struct client_node* client);
 
 // Initialise the server node.
 void server_node_init(struct server_node* node);
@@ -52,11 +60,21 @@ void server_connect_client(struct server_node* server, struct client_node* clien
 
 // Disconnect a client from a server node's clients list. This will free the client
 // node from memory.
-void server_disconnect_client(struct server_node* server, struct client_node* client);
+void server_disconnect_client(struct server_node* server, struct client_node* client, bool print_msg);
+
+// Check if a client is connected without iterating through the entire list of clients.
+// Returns the client node if found, othewrise NULL.
+struct client_node* server_find_by_name(struct server_node* server, const char* name);
+
+// Loop through each client.
+void server_loop_clients(struct server_node* server, struct client_node* except, loop_clients_func func);
 
 // Kick a client. This should be called from server code only, and is assumed to be
 // called only from object code too.
 void server_kick(struct server_node* server, struct client_node* client, const char* msg);
+
+// Disconnect a client that is flagged for deletion.
+void server_free_flagged_client(struct server_node* server, struct client_node* client);
 
 // Disconnect any clients that are flagged for deletion.
 void server_free_flagged_clients(struct server_node* server);

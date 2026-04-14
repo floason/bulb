@@ -73,7 +73,7 @@ struct bulb_client* client_init(const char* host, const char* port, enum client_
     }, "getaddrinfo() failed: %d\n", result);
 
     // Set up the local client node and instantiate its socket for server communication.
-    client->local_node = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
+    client->local_node = localclient = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
     client->local_node->bulb_client = client;
     SOCKET sock = socket(client->addr_ptr->ai_family, client->addr_ptr->ai_socktype,
         client->addr_ptr->ai_protocol);
@@ -155,8 +155,7 @@ bool client_connect(struct bulb_client* client)
     client->addr_ptr = NULL;
     client->is_connected = true;
 
-    server_connect_client(&client->server_node, client->local_node);
-    thrd_create(&client->local_node->thread, _client_thread, client->local_node);
+    thrd_create(&client->local_node->recv_thread, _client_thread, client->local_node);
     return true;
 }
 
@@ -187,7 +186,7 @@ bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinf
     client->local_node->userinfo = tagged_malloc(sizeof(struct userinfo_obj), TAG_BULB_OBJ);
     memcpy(client->local_node->userinfo, &userinfo, sizeof(struct userinfo_obj));
 
-    while (!client->local_node->validated);
+    while (!client_ready(client));
     return true;
 }
 
@@ -195,7 +194,7 @@ bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinf
 bool client_ready(struct bulb_client* client)
 {
     ASSERT(client, return false);
-    return client->local_node->validated;
+    return client->local_node->status == CLIENT_VALIDATED;
 }
 
 // Process client input. Returns true if a command was detected, otherwise false.
@@ -209,12 +208,12 @@ bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success
         if (msg[i] != '/')
             break;
         
-        
-        bool result = bulb_parse_cmd_input(&client->server_node, client->local_node, msg + i + 1);
+        bool result = bulb_parse_cmd_input(&client->server_node, msg + i + 1);
         if (cmd_success != NULL)
             *cmd_success = result;
         return true;
     }
+    
     message_obj_write(&client->local_node->mt_sock, client->local_node->userinfo->name, msg);
     return false;
 }

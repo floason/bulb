@@ -40,6 +40,42 @@
 #   define MAX(A, B) (((A) > (B)) ? (A) : (B))
 #endif
 
+/* Doubly-linked list function macros start */
+
+#define LINKED_LIST_ADD(NODE, HEAD, TAIL)                                   \
+    {                                                                       \
+        NODE->next = NULL;                                                  \
+        NODE->prev = TAIL;                                                  \
+        if (TAIL != NULL)                                                   \
+            TAIL->next = NODE;                                              \
+        TAIL = NODE;                                                        \
+        if (HEAD == NULL)                                                   \
+            HEAD = NODE;                                                    \
+    }                                                                       \
+
+#define LINKED_LIST_REMOVE(NODE, HEAD, TAIL)                                \
+    {                                                                       \
+        if (NODE->next)                                                     \
+            NODE->next->prev = NODE->prev;                                  \
+        else                                                                \
+            TAIL = NODE->prev;                                              \
+        if (NODE->prev)                                                     \
+            NODE->prev->next = NODE->next;                                  \
+        else                                                                \
+            HEAD = NODE->next;                                              \
+    }                                                                       \
+
+#define LINKED_LIST_EMPTY(NODE)     (NODE == NULL)
+
+#define QUEUE_ENQUEUE(NODE, HEAD, TAIL) LINKED_LIST_ADD(NODE, HEAD, TAIL)
+#define QUEUE_DEQUEUE(NODE, HEAD, TAIL)                                     \
+    ASSERT(HEAD != NULL, { }, "Attempted to dequeue from empty queue!");    \
+    NODE = HEAD;                                                            \
+    LINKED_LIST_REMOVE(HEAD, HEAD, TAIL)
+#define QUEUE_EMPTY(NODE)               LINKED_LIST_EMPTY(NODE)
+
+/* Doubly-linked list function macros end */
+
 /* DO NOT USE! */
 static inline void _assert_error(FILE* stream, ...)
 {
@@ -81,7 +117,7 @@ static inline void* quick_malloc(size_t size)
 enum tags
 {
     TAG_FIRST,
-    TAG_TEMP_OBJ,
+    TAG_TEMP,
 
     TAG_TRIE,
     TAG_BULB_CLIENT,

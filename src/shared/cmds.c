@@ -22,7 +22,7 @@
 static struct trie* bulb_cmds;
 
 // status: lists information about the Bulb protocol and server.
-bool _cmd_status(struct server_node* server, struct client_node* client, struct cmd_args* params)
+bool _cmd_status(struct server_node* server, struct cmd_args* params)
 {
     bulb_printver();
     printf("no. connected: %d\n", server->number_connected);
@@ -40,10 +40,10 @@ bool _cmd_status(struct server_node* server, struct client_node* client, struct 
 }
 
 // exit: terminate the connnection.
-bool _cmd_exit(struct server_node* server, struct client_node* client, struct cmd_args* params)
+bool _cmd_exit(struct server_node* server, struct cmd_args* params)
 {
 #ifdef CLIENT
-    client_throw_exception(client->bulb_client, CLIENT_DISCONNECT, NULL);
+    client_throw_exception(localclient->bulb_client, CLIENT_DISCONNECT, NULL);
 #else
     server_throw_exception(server->bulb_server, SERVER_FINISH, NULL);
 #endif
@@ -63,13 +63,13 @@ void bulb_register_cmd(const char* name, bulb_cmd_func func)
 
 // Parse a command prompt and invoke the appropriate command. Returns false if
 // the command was not found.
-bool bulb_parse_cmd_input(struct server_node* server, struct client_node* client, const char* buffer)
+bool bulb_parse_cmd_input(struct server_node* server, const char* buffer)
 {
     ASSERT(bulb_cmds != NULL, return false);
 
     int buffer_len = strlen(buffer), temp_len = buffer_len + 1;
     char cmd[MAX_CMD_NAME_LENGTH + 1] = "";
-    char* temp_buffer = (char*)tagged_malloc(temp_len, TAG_TEMP_OBJ);
+    char* temp_buffer = (char*)tagged_malloc(temp_len, TAG_TEMP);
     struct cmd_args* params = NULL;
     struct cmd_args* next = NULL;
 
@@ -84,12 +84,12 @@ bool bulb_parse_cmd_input(struct server_node* server, struct client_node* client
             else
             {
                 if (params == NULL)
-                    next = params = (struct cmd_args*)tagged_malloc(sizeof(struct cmd_args), TAG_TEMP_OBJ);
+                    next = params = (struct cmd_args*)tagged_malloc(sizeof(struct cmd_args), TAG_TEMP);
                 else
-                    next = params->next = (struct cmd_args*)tagged_malloc(sizeof(struct cmd_args), TAG_TEMP_OBJ);
+                    next = params->next = (struct cmd_args*)tagged_malloc(sizeof(struct cmd_args), TAG_TEMP);
                 params->argc++;
                 next->param = temp_buffer;
-                temp_buffer = (char*)tagged_malloc(temp_len, TAG_TEMP_OBJ);
+                temp_buffer = (char*)tagged_malloc(temp_len, TAG_TEMP);
             }
             memset(temp_buffer, 0, temp_len);
         }
@@ -99,20 +99,20 @@ bool bulb_parse_cmd_input(struct server_node* server, struct client_node* client
 
     // This must be free()'d separately as it is still re-allocated independently
     // of its assignment to any parameter object.
-    tagged_free(temp_buffer, TAG_TEMP_OBJ);
+    tagged_free(temp_buffer, TAG_TEMP);
 
     bulb_cmd_func func = trie_find(bulb_cmds, buffer);
     if (func == NULL)
         goto finish;
-    func(server, client, params);
+    func(server, params);
 
 finish:
     next = params;
     while (next)
     {
         params = next;
-        tagged_free(next->param, TAG_TEMP_OBJ);
-        tagged_free(next, TAG_TEMP_OBJ);
+        tagged_free(next->param, TAG_TEMP);
+        tagged_free(next, TAG_TEMP);
         next = params->next;
     }
 

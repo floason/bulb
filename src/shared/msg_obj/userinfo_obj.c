@@ -86,7 +86,8 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     });
 
     // Validate the client and log its entry.
-    client->validated = true;
+    client_set_status(client, CLIENT_VALIDATED);
+    server_connect_client(server, client);
     LOOP_CLIENTS(server, NULL, node,
     {
         char buffer[64 + MAX_NAME_LENGTH];
@@ -104,13 +105,11 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     });
     
     return;
+
+kick_client:
+    server_disconnect_client(server, client, false);
+    return;
 #endif
 
     ASSERT(false, return);
-
-#ifdef SERVER
-kick_client:
-    client->delete = true;
-    return;
-#endif
 }

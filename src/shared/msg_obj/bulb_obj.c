@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <threads.h>
+#include <string.h>
 
 #include "unisock.h"
 #include "bulb_obj.h"
@@ -48,14 +49,31 @@ bool bulb_obj_write(struct mt_socket* sock, struct bulb_obj* obj)
     size_t remaining = obj->size;
     do
     {
+#ifdef CLIENT
+        // The entire local client thread in client code is synchronous at the moment, although
+        // this model may be re-evaluated in the future.
         int written = send(sock->socket, (const char*)obj + (obj->size - remaining), 
             MIN(remaining, RECV_BUFFER_SIZE), MSG_NOSIGNAL);
         if (written == SOCKET_ERROR)
             goto finish;
         remaining -= written;
+#else
+        size_t written = MIN(remaining, RECV_BUFFER_SIZE);
+        struct mt_socket_write_node* node = (struct mt_socket_write_node*)tagged_malloc(
+            sizeof(struct mt_socket_write_node) + written, TAG_TEMP);
+        memcpy(node->data, (const char*)obj + (obj->size - remaining), written);
+        node->len = written;
+
+        QUEUE_ENQUEUE(node, sock->send_queue, sock->send_queue_tail);
+        remaining -= written;
+#endif
     } while (remaining > 0);
     
+#ifdef SERVER
+    cnd_signal(&sock->send_signal);
+#endif
     return_value = true;
+
 finish:
     mtx_unlock(&sock->write_lock);
     return return_value;

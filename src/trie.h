@@ -4,6 +4,34 @@
 #pragma once
 
 #include <stdbool.h>
+#include <threads.h>
+
+#define TRIE_DFS(ROOT, ID, BEFORE, SCOPE, AFTER)                                \
+    {                                                                           \
+        BEFORE;                                                                 \
+                                                                                \
+        struct trie* node##ID = ROOT->children;                                 \
+        while (node##ID != NULL)                                                \
+        {                                                                       \
+            if (node##ID->value != NULL)                                        \
+            {                                                                   \
+                void* ID = node##ID->value;                                     \
+                SCOPE;                                                          \
+            }                                                                   \
+                                                                                \
+            if (node##ID->children != NULL)                                     \
+                node##ID = node##ID->children;                                  \
+            else                                                                \
+            {                                                                   \
+                while (node##ID != NULL && node##ID->next == NULL)              \
+                    node##ID = node##ID->parent;                                \
+                if (node##ID != NULL)                                           \
+                    node##ID = node##ID->next;                                  \
+            }                                                                   \
+        }                                                                       \
+                                                                                \
+        AFTER;                                                                  \
+    }    
 
 struct trie
 {

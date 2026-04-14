@@ -1,6 +1,8 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
+#pragma once
+
 #include <stdbool.h>
 #include <threads.h>
 
