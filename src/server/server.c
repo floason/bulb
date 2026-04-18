@@ -23,7 +23,7 @@ static int _server_client_recv_thread(void* c)
     for (;;)
     {
         struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, error_msg, sizeof(error_msg));
-        if (obj == NULL)
+        if (obj == NULL && !client_flagged_for_deletion(client))
         {
             if (error_msg[0] != '\0')
                 server_kick(server, client, error_msg);
@@ -32,7 +32,8 @@ static int _server_client_recv_thread(void* c)
         }
 
         if (client_flagged_for_deletion(client))
-        {
+        { 
+            cnd_signal(&client->mt_sock.send_signal);
             client_set_status(client, CLIENT_READY_TO_DELETE);
             return 0;
         }
@@ -58,7 +59,10 @@ static int _server_client_send_thread(void* c)
 
         // If the client is flagged for deletion, exit.
         if (client_flagged_for_deletion(client))
+        {
+            client_set_status(client, CLIENT_READY_TO_DELETE);
             return 0;
+        }
 
         // Handle writing whatever is currently enqueued in the client socket's send
         // queue. Everything must be written before the send thread mutex is unlocked,
@@ -99,9 +103,11 @@ static int _server_listen_thread(void* s)
             if (!server_throw_exception(server, SERVER_CLIENT_ACCEPT_FAIL, NULL))
                 return 0;
         }, "Failed to accept new client connection: %d\n", socket_errno());
-
+    
+        node->thread_ref_count = 2;
         setup_mt_socket(&node->mt_sock, sock);
         mtx_init(&node->send_thread_lock, mtx_plain);
+        mtx_init(&node->client_status_lock, mtx_plain);
         thrd_create(&node->recv_thread, _server_client_recv_thread, (void*)node);
         thrd_create(&node->send_thread, _server_client_send_thread, (void*)node);
 

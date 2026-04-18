@@ -6,10 +6,8 @@
 #include <stdbool.h>
 #include <threads.h>
 
-#define TRIE_DFS(ROOT, ID, BEFORE, SCOPE, AFTER)                                \
+#define TRIE_DFS(ROOT, ID, SCOPE)                                               \
     {                                                                           \
-        BEFORE;                                                                 \
-                                                                                \
         struct trie* node##ID = ROOT->children;                                 \
         while (node##ID != NULL)                                                \
         {                                                                       \
@@ -29,8 +27,6 @@
                     node##ID = node##ID->next;                                  \
             }                                                                   \
         }                                                                       \
-                                                                                \
-        AFTER;                                                                  \
     }    
 
 struct trie

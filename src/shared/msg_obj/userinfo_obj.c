@@ -31,10 +31,6 @@ bool userinfo_obj_write(struct mt_socket* sock, struct userinfo_obj* obj)
 void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, struct client_node* client)
 {
 #ifdef SERVER
-    // This must always be set, so that the server can free the userinfo node
-    // appropriately, once the client is disconnected.
-    client->userinfo = obj;
-
     // Reject clients with empty usernames.
     if (strlen(obj->name) == 0)
     {
@@ -66,26 +62,32 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         // Report the invalid version of the connecting client to the server 
         // console.
         fprintf(stderr, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d (server " \
-            "expects version %d.%d.%d)\n", client->userinfo->name, ip_str, obj->major, obj->minor, 
-            obj->patch, MAJOR, MINOR, PATCH);
+            "expects version %d.%d.%d)\n", obj->name, ip_str, obj->major, obj->minor, obj->patch, 
+            MAJOR, MINOR, PATCH);
 
         goto kick_client;
     }
 
     // Reject the client if it has the same username as another user.
+    bool client_kicked = false;
     LOOP_CLIENTS(server, client, node,
     {
-        if (strcmp(client->userinfo->name, node->userinfo->name) == 0)
+        if (strcmp(obj->name, node->userinfo->name) == 0)
         {
             stdout_obj_write(&client->mt_sock, 
                 "Sorry, another client is already connected with that name!\n");
             fprintf(stderr, "Client \"%s\" (%s) failed to connect as the given username is already "    \
-                "occupied\n", client->userinfo->name, ip_str);
-            goto kick_client;
+                "occupied\n", obj->name, ip_str);
+            
+            client_kicked = true;
+            break;
         }
     });
+    if (client_kicked)
+        goto kick_client;
 
     // Validate the client and log its entry.
+    client->userinfo = obj;
     client_set_status(client, CLIENT_VALIDATED);
     server_connect_client(server, client);
     LOOP_CLIENTS(server, NULL, node,

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <threads.h>
 
 #include "unisock.h"
@@ -50,8 +51,10 @@ struct client_node
     // Client communication architecture.
     thrd_t recv_thread;
     thrd_t send_thread;
-    mtx_t send_thread_lock; // Used for preventing race conditions with client node deletion.
+    mtx_t send_thread_lock;     // Used for preventing race conditions with client node deletion.
+    mtx_t client_status_lock;   // Used for preventing (albeit unlikely) race conditions for client status.
     struct mt_socket mt_sock;
+    unsigned thread_ref_count;
 
     // Used for linking client nodes when pending deallocation.
     struct client_node* next;

@@ -50,7 +50,7 @@ void server_node_init(struct server_node* node)
 // Connect a new client to a server node's clients list.
 void server_connect_client(struct server_node* server, struct client_node* client)
 {
-    // The client node should already have its socket configured.
+    // The client node should already have its socket and userinfo configured.
 
     trie_add(server->clients, client->userinfo->name, client);
     server->number_connected++;
@@ -87,7 +87,8 @@ void server_disconnect_client(struct server_node* server, struct client_node* cl
     }
 #endif
 
-    trie_delete(server->clients, client->userinfo->name);
+    if (client->userinfo)
+        trie_delete(server->clients, client->userinfo->name);
     LINKED_LIST_ADD(client, server->flagged_clients_list, server->flagged_clients_list_tail);
 
     // Synchronise the client's departure with all other clients.
@@ -169,11 +170,11 @@ void server_free_flagged_clients(struct server_node* server)
 // being terminated.
 void server_disconnect_all_clients(struct server_node* server)
 {
-    TRIE_DFS(server->clients, node, {},
+    TRIE_DFS(server->clients, node,
     {
         struct client_node* client = (struct client_node*)node;
         _client_flag_for_deletion(client);
         _client_close(client);
-    }, {});
+    });
     trie_free(server->clients);
 }

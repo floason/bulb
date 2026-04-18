@@ -15,18 +15,14 @@
     
 #define LOOP_CLIENTS(SERVER, EXCEPT, ID, SCOPE)                                 \
     {                                                                           \
+        mtx_lock(&SERVER->free_flagged_clients_mutex);                          \
         TRIE_DFS(SERVER->clients, trie##ID,                                     \
-        {                                                                       \
-            mtx_lock(&SERVER->free_flagged_clients_mutex);                      \
-        },                                                                      \
         {                                                                       \
             struct client_node* ID = (struct client_node*)trie##ID;             \
             if (ID != EXCEPT && ID->status == CLIENT_VALIDATED)                 \
                 SCOPE;                                                          \
-        },                                                                      \
-        {                                                                       \
-            mtx_unlock(&SERVER->free_flagged_clients_mutex);                    \
         });                                                                     \
+        mtx_unlock(&SERVER->free_flagged_clients_mutex);                        \
     }                                                                       
 
 struct bulb_server;

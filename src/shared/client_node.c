@@ -1,11 +1,13 @@
 // floason (C) 2026
 // Licensed under the MIT License.
 
+#include <stdatomic.h>
+
 #include "util.h"
 #include "client_node.h"
 
 #ifdef CLIENT
-struct client_node* localclient;
+    struct client_node* localclient;
 #endif
 
 // Is a client being prepared for deletion?
@@ -17,6 +19,7 @@ bool client_flagged_for_deletion(struct client_node* client)
 // Update a client's status, if appropriate.
 void client_set_status(struct client_node* client, enum client_status flag)
 {
+    mtx_lock(&client->client_status_lock);
     switch (flag)
     {
         case CLIENT_VALIDATED:
@@ -27,7 +30,18 @@ void client_set_status(struct client_node* client, enum client_status flag)
             if (client->status < CLIENT_FLAGGED_FOR_DELETION)
                 client->status = CLIENT_FLAGGED_FOR_DELETION;
             break;
+#ifdef SERVER  
+        // The server code currently employs multiple threads for each client node,
+        // thus the client should only be marked ready to delete once all threads
+        // have been exited.
+        case CLIENT_READY_TO_DELETE:
+            if (--client->thread_ref_count == 0)
+                client->status = CLIENT_READY_TO_DELETE;
+            break;
+#endif
         default:
             client->status = flag;
+            break;
     }
+    mtx_unlock(&client->client_status_lock);
 }
