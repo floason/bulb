@@ -7,18 +7,39 @@
 
 #include <stdbool.h>
 #include <ctype.h>
-#include "threads.h"
+#include <threads.h>
+#include <errno.h>
 
 #include "console_io.h"
 #include "util.h"
 
 #if defined WIN32
+#   include "windows.h"
+#   include "conio.h"
+
     static HANDLE stdout_handle;
     static HANDLE stdin_handle;
     static DWORD stdout_mode;
     static DWORD stdin_mode;
 #elif defined __UNIX__
+#   include <unistd.h>
+#   include <poll.h>
+#   include <termios.h>
+#   include <signal.h>
+#   include <sys/ioctl.h>
+
     static struct termios stdin_mode;
+    static struct sigaction sigwinch_action;
+    static struct sigaction sigwinch_old;
+    static struct winsize term_size;
+    
+    // Cache the current executing terminal's number of rows and columns,
+    // using a signal handler for SIGWINCH.
+    void sigwinch_handler(int signum)
+    {
+        ASSERT(ioctl(STDIN_FILENO, TIOCGWINSZ, &term_size) != -1, return, 
+            "Could not call tcgetwinsize(): %d", errno);
+    }
 #endif
 
 // Used with get_console_cursor_pos() on POSIX.
@@ -51,17 +72,12 @@ void printf_clear_screen()
     printf("\x1B[2J\x1B[3J\x1B[1;1H");
 }
 
-// Move the cursor to the beginning of the next line.
-void start_next_console_line()
-{
-    printf("\x1B[E");
-}
-
 // Windows: disables ENABLE_LINE_INPUT, which disables line buffering.
 // Linux: disables canonical mode and console echo on input, which
-// disables line buffering. Output buffering is also disabled.
+// disables line buffering. Output buffering is also disabled and a
+// signal handler is set up for SIGWINCH for retrieving the terminal size.
 // Returns false on failure.
-bool disable_line_buffering()
+bool enable_console_io_functions()
 {
     mtx_init(&block_getchar, mtx_plain);
 
@@ -82,6 +98,12 @@ bool disable_line_buffering()
     // Also disable stdout buffering.
     setbuf(stdout, NULL);
 
+    // Set up a signal handler for SIGWINCH for caching the current
+    // terminal size.
+    memset(&sigwinch_action, 0, sizeof(sigwinch_action));
+    sigwinch_action.sa_handler = sigwinch_handler;
+    sigaction(SIGWINCH, &sigwinch_action, &sigwinch_old);
+    raise(SIGWINCH);
     return true;
 #endif
 
@@ -159,17 +181,7 @@ int get_num_columns_for_console()
 
     return info.srWindow.Right - info.srWindow.Left + 1;
 #elif defined __UNIX__
-    // There isn't any direct ANSI sequence for retrieving a terminal's size,
-    // however we can position the cursor at an unrealistic distance away from
-    // the start, and assuming the terminal clamps the cursor position, we
-    // can utilise this information instead.
-    unsigned cached_x, cached_y;
-    unsigned max_columns, throwaway_y;
-    get_console_cursor_pos(&cached_x, &cached_y);
-    printf("\x1B[%d;65535H", cached_y + 1);
-    get_console_cursor_pos(&max_columns, &throwaway_y);
-    printf("\x1B[%d;%dH", cached_y + 1, cached_x + 1);
-    return max_columns + 1;
+    return term_size.ws_col;
 #endif
 
     ASSERT(false, return -1, "Operating system not supported!\n");
@@ -177,7 +189,7 @@ int get_num_columns_for_console()
 
 // Clear the last written character, only after disabling line input!
 // Returns false only on unsupported operating system.
-bool clear_last_character()
+bool clear_last_character(int estimated_input_buffer_length)
 {
 #if defined WIN32
     CONSOLE_SCREEN_BUFFER_INFO info;
@@ -201,15 +213,22 @@ bool clear_last_character()
 
     return true;
 #elif defined __UNIX__
-    unsigned cached_x, cached_y;
-    get_console_cursor_pos(&cached_x, &cached_y);
-    if (cached_x == 0)
+    // estimated_input_buffer_length (if positive) can be used over 
+    // get_console_cursor_pos(), which is orders of magnitude fasters,
+    // at the cost of limited accuracy.
+    bool start_of_line = false;
+    int max_columns = get_num_columns_for_console();
+    if (estimated_input_buffer_length < 0)
     {
-        int max_columns = get_num_columns_for_console();
-        printf("\x1B[%d;%dH", cached_y, max_columns + 1);
-        printf(" ");
-        printf("\x1B[%d;%dH", cached_y, max_columns + 1);
+        unsigned cached_x, cached_y;
+        get_console_cursor_pos(&cached_x, &cached_y);
+        start_of_line = (cached_x == 0);
     }
+    else
+        start_of_line = (estimated_input_buffer_length % max_columns == 0);
+
+    if (start_of_line)
+        printf("\x1B[F\x1B[%dG \x1B[%dG", max_columns, max_columns);
     else
         printf("\b \b");
     return true;
@@ -289,9 +308,9 @@ int read_stdin_char()
     ASSERT(false, return '\0', "Operating system not supported!\n");
 }
 
-// Clean-up console settings after calling disable_line_input().
+// Clean-up console settings after calling enable_console_io_functions().
 // Returns false only on unsupported operating system.
-bool cleanup_console_mode()
+bool disable_console_io_functions()
 {
 #if defined WIN32
     SetConsoleMode(stdout_handle, stdout_mode);
@@ -299,6 +318,7 @@ bool cleanup_console_mode()
     return true;
 #elif defined __UNIX__
     tcsetattr(STDIN_FILENO, TCSANOW, &stdin_mode);
+    sigaction(SIGWINCH, &sigwinch_old, NULL);
     return true;
 #endif
 

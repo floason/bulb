@@ -32,7 +32,7 @@ static atomic_bool print_message_lock_busy;
 
 static void _cleanup(struct bulb_client* client)
 {
-    cleanup_console_mode();
+    disable_console_io_functions();
     client_free(client);
 }
 
@@ -54,6 +54,8 @@ static void _print_message(struct bulb_client* client, const char* message)
     get_console_cursor_pos(&cursor_x, &cursor_y);
     if (waiting_for_input)
     {
+        // TODO: introduce in-depth text scanning for more sophisticated messages which
+        // contain newlines, as currently they would be parsed as just another character.
         num_columns = get_num_columns_for_console();
         int lines = line_length / num_columns + 1;
         clear_lines_from_y(cursor_y - lines + 1, lines);
@@ -68,7 +70,7 @@ static void _print_message(struct bulb_client* client, const char* message)
     {
         printf("%s: %s", name_buffer, input_buffer);
         if (line_length % num_columns == 0)
-            start_next_console_line();
+            printf("\n");
     }
 
     mtx_unlock(&print_message_lock);
@@ -167,7 +169,7 @@ int main()
     }
 
     // Disable stdin line buffering at this point.
-    disable_line_buffering();
+    enable_console_io_functions();
     
     // Authenticate the user connection.
     struct userinfo_obj userinfo = { };
@@ -192,6 +194,7 @@ new_iteration:
             continue;
 
         // Parse the inputted character.
+        mtx_lock(&print_message_lock);
         switch (c)
         {
             // Reject NUL.
@@ -207,8 +210,12 @@ new_iteration:
             case '\n':
             case '\r':
             {
+                // Print a new line to mark the beginning of the next message only if
+                // the terminal cursor is not at the beginning of a new line already.
+                if ((strlen(userinfo.name) + 2 + input_buffer_w) % get_num_columns_for_console() > 0)
+                    printf("\n");
+
                 bool cmd_success;
-                printf("\n");
                 if (client_input(client, input_buffer, &cmd_success))
                 {
                     if (cmd_success)
@@ -218,6 +225,8 @@ new_iteration:
                 }
                 memset(input_buffer, '\0', sizeof(input_buffer));
                 input_buffer_w = 0;
+                
+                mtx_unlock(&print_message_lock);
                 goto new_iteration;
             }
             
@@ -230,8 +239,8 @@ new_iteration:
                 {
                     if (input_buffer_w > 0)
                     {
+                        clear_last_character(strlen(userinfo.name) + 2 + input_buffer_w);
                         input_buffer[--input_buffer_w] = '\0';
-                        clear_last_character();
                     }
                 }
                 else if (input_buffer_w < sizeof(input_buffer) - 1)
@@ -249,13 +258,12 @@ new_iteration:
                     // wrapping behaviour only occurs when the next inputted
                     // character only fits on the next line instead. Thus, the 
                     // former functionality must be handled manually.
-                    int num_columns = get_num_columns_for_console();
-                    int lines = input_buffer_w / num_columns + 1;
-                    if ((strlen(userinfo.name) + 2 + input_buffer_w) % num_columns == 0)
-                        start_next_console_line();
+                    if ((strlen(userinfo.name) + 2 + input_buffer_w) % get_num_columns_for_console() == 0)
+                        printf("\n");
                 }
                 break;
         }
+        mtx_unlock(&print_message_lock);
     }
 
 finish:
