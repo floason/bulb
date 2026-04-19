@@ -66,7 +66,7 @@ struct client_node
 };
 
 #ifdef CLIENT
-extern struct client_node* localclient;
+    extern struct client_node* localclient;
 #endif
 
 // Is a client being prepared for deletion?

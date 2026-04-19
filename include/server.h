@@ -6,9 +6,12 @@
 #include <stdbool.h>
 #include <threads.h>
 
-#include "unisock.h"
 #include "bulb_macros.h"
-#include "server_node.h"
+
+#ifdef SERVER
+#   include "unisock.h"
+#   include "server_node.h"
+#endif
 
 struct bulb_server;
 
@@ -20,6 +23,8 @@ enum server_error_state
 
     // Exceptions which do not disrupt the server instance.
     SERVER_CLIENT_ACCEPT_FAIL,
+    SERVER_PRINT_STDOUT,        // data is const char*
+    SERVER_RECEIVED_MESSAGE,    // data is bulb_message*
 
     // Server exit that results in the server thread being ended.
     SERVER_FINISH,
@@ -38,41 +43,45 @@ typedef bool (*server_exception_func)(struct bulb_server* server,
 
 struct bulb_server
 {
-#ifdef WIN32
-    WSADATA _wsa_data;
-#endif
-    SOCKET listen_sock;
     thrd_t listen_thread;
     bool is_listening;
+    bool disconnect_handled;    // Should be toggled by the exception handler on 
+                                // SERVER_FINISH.
     enum server_error_state error_state;
-
-    struct server_node server_node;
 
     // Errors raised outside server_init() will invoke this function. If false is returned
     // for a non-critical error, the server will terminate.
     server_exception_func exception_handler;
+
+#ifdef SERVER
+    SOCKET listen_sock;
+    struct server_node* server_node;
+#endif
 };
 
 // Create a new server instance. error_state can be NULL. Returns NULL on error.
-struct bulb_server* server_init(const char* port, enum server_error_state* error_state);
+BULB_API struct bulb_server* server_init(const char* port, enum server_error_state* error_state);
 
 // Start handling a non-critical exception. If the exception returns false,
 // it will be re-evaluated as a critical error and this function will return
 // false.
-bool server_throw_exception(struct bulb_server* server, 
-                            enum server_error_state error, 
-                            void* data);
+BULB_API bool server_throw_exception(struct bulb_server* server, 
+                                     enum server_error_state error, 
+                                     void* data);
 
 // Start handling a critical error.
-void server_throw_critical_error(struct bulb_server* server, 
-                                 enum server_error_state error, 
-                                 void* data);
+BULB_API void server_throw_critical_error(struct bulb_server* server, 
+                                          enum server_error_state error, 
+                                          void* data);
 
 // Set a custom exception handler.
-void server_set_exception_handler(struct bulb_server* server, server_exception_func func);
+BULB_API void server_set_exception_handler(struct bulb_server* server, server_exception_func func);
 
 // Start accepting new clients asynchronously. Returns false on error.
-bool server_listen(struct bulb_server* server);
+BULB_API bool server_listen(struct bulb_server* server);
+
+// Process server input. Returns true if a command was detected, otherwise false.
+BULB_API bool server_input(struct bulb_server* server, const char* msg, bool* cmd_success);
 
 // Free a server instance.
-void server_free(struct bulb_server* server);
+BULB_API void server_free(struct bulb_server* server);

@@ -53,12 +53,8 @@ void stdout_obj_process(struct stdout_obj* obj, struct server_node* server, stru
 #ifdef CLIENT
     client_throw_exception(client->bulb_client, CLIENT_PRINT_STDOUT, (void*)&obj->buffer);
 #else
-    if (!str_isprint(obj->buffer))
-    {
-        server_kick(server, client, "Message communication must utilise displayable characters!\n");
-        goto finish;
-    }
-    printf("%s", obj->buffer);
+    // Throw an assert as this should've been caught when the object was received.
+    ASSERT(false, return, "stdout_obj found in processing queue from client thread!\n");
 #endif
 
 finish:

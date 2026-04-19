@@ -8,15 +8,16 @@
 #include <string.h>
 
 #include "unisock.h"
-#include "bulb_macros.h"
+#include "bulb_structs.h"
 #include "server_node.h"
 #include "client_node.h"
-#include "stdout_obj.h"
 #include "userinfo_obj.h"
 #include "message_obj.h"
 
 #ifdef CLIENT
 #   include "client.h"
+#else
+#   include "server.h"
 #endif
 
 // Read a message_obj object. Returns NULL on failure.
@@ -26,11 +27,12 @@ struct bulb_obj* message_obj_read(struct mt_socket* sock, struct bulb_obj* heade
 }
 
 // Write a message_obj object. Returns false on failure.
-bool message_obj_write(struct mt_socket* sock, const char* name, const char* msg)
+bool message_obj_write(struct mt_socket* sock, const char* name, const char* msg, bool from_server)
 {
     struct message_obj obj;
     obj.base.type = BULB_MESSAGE;
     obj.base.size = sizeof(struct message_obj);
+    obj.from_server = from_server;
     strncpy(obj.name, name, sizeof(obj.name));
     strncpy(obj.message, msg, sizeof(obj.message));
     return bulb_obj_write(sock, (struct bulb_obj*)&obj);
@@ -47,16 +49,20 @@ void message_obj_process(struct message_obj* obj, struct server_node* server, st
         goto finish;
     }
 
-    // On the server, print the sender's username and their message, then forward
-    // the message object to all other clients. Even though the object will contain
+    struct bulb_message msg_exception_obj;
+    msg_exception_obj.name = obj->name;
+    msg_exception_obj.message = obj->message;
+    server_throw_exception(server->bulb_server, SERVER_RECEIVED_MESSAGE, (void*)&msg_exception_obj);
+
+    // On the server, after printing the sender's username and their message, the message
+    // object should be forwarded to all other clients. Even though the object will contain 
     // a copy of the sending client's name, the name stored in the client parameter's
     // userinfo object instead should be used in case a fraudulent username is passed
     // in the message object by the client.
-    printf("%s: %s\n", client->userinfo->name, obj->message);
-    LOOP_CLIENTS(server, client, node, message_obj_write(&node->mt_sock, client->userinfo->name, 
-        obj->message));
+    LOOP_CLIENTS(server, client, node, message_obj_write(&node->mt_sock, client->userinfo->info.name, 
+        obj->message, false));
 #else
-    struct client_message msg_exception_obj;
+    struct bulb_message msg_exception_obj;
     msg_exception_obj.name = obj->name;
     msg_exception_obj.message = obj->message;
     client_throw_exception(client->bulb_client, CLIENT_RECEIVED_MESSAGE, (void*)&msg_exception_obj);

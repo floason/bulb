@@ -1,6 +1,8 @@
-add_executable(bulb_client main.c client.c)
-target_compile_definitions(bulb_client PUBLIC CLIENT)
-target_include_directories(bulb_client PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(bulb_client PUBLIC bulb_interface bulb_shared)
+add_library(bulb_client ${BULB_LIB_TYPE} client.c)
+target_compile_definitions(bulb_client PRIVATE CLIENT)
+target_include_directories(bulb_client PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+target_link_libraries(bulb_client PRIVATE bulb_interface bulb_shared)
 
-install(TARGETS bulb_client DESTINATION bin)
+bulb_compile_export_macros(bulb_client)
+
+install(TARGETS bulb_client DESTINATION lib)

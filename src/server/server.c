@@ -1,16 +1,22 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
-// See userinfo_obj.c for user validation code.
+// See userinfo_obj.c for client validation code.
 
 #include <string.h>
 #include <stdbool.h>
+#include <threads.h>
 
 #include "unisock.h"
 #include "server.h"
+#include "cmds.h"
 #include "obj_reader.h"
 #include "obj_process.h"
-#include "userinfo_obj.h"
+#include "message_obj.h"
+
+#ifdef WIN32
+    static WSADATA wsa_data;
+#endif
 
 // Start reading and processing message objects in a new thread for a given client
 // connection.
@@ -28,7 +34,7 @@ static int _server_client_recv_thread(void* c)
             if (error_msg[0] != '\0')
                 server_kick(server, client, error_msg);
             else
-                server_disconnect_client(server, client, true);
+                server_disconnect_client(server, client, true, true);
         }
 
         if (client_flagged_for_deletion(client))
@@ -94,16 +100,18 @@ static int _server_listen_thread(void* s)
     {
         int length = sizeof(struct sockaddr_in);
         struct client_node* node = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
-        node->server_node = &server->server_node;
+        node->server_node = server->server_node;
         
         SOCKET sock = accept(server->listen_sock, (struct sockaddr*)&node->addr, &length);
-        ASSERT(sock != INVALID_SOCKET,
+        if (sock == INVALID_SOCKET)
         {
             tagged_free(node, TAG_CLIENT_NODE);
-            if (!server_throw_exception(server, SERVER_CLIENT_ACCEPT_FAIL, NULL))
+            if (server->disconnect_handled 
+                || !server_throw_exception(server, SERVER_CLIENT_ACCEPT_FAIL, NULL))
                 return 0;
-        }, "Failed to accept new client connection: %d\n", socket_errno());
-    
+            continue;
+        }
+
         node->thread_ref_count = 2;
         setup_mt_socket(&node->mt_sock, sock);
         mtx_init(&node->send_thread_lock, mtx_plain);
@@ -112,7 +120,7 @@ static int _server_listen_thread(void* s)
         thrd_create(&node->send_thread, _server_client_send_thread, (void*)node);
 
         // Periodically deallocate clients marked for deletion.
-        server_free_flagged_clients(&server->server_node);
+        server_free_flagged_clients(server->server_node);
     }
 
     return 0;
@@ -127,7 +135,7 @@ struct bulb_server* server_init(const char* port, enum server_error_state* error
     // If Winsock is being used, Winsock must be initialized beforehand.
     int result = 0;
 #ifdef WIN32
-    result = WSAStartup(MAKEWORD(2, 2), &server->_wsa_data);
+    result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
     ASSERT(result == 0, 
     {
         server->error_state = SERVER_WINSOCK_FAIL;
@@ -165,8 +173,10 @@ struct bulb_server* server_init(const char* port, enum server_error_state* error
     }, "Failed to bind to socket localhost:%d: %d\n", port, socket_errno());
     freeaddrinfo(addr_ptr);
 
-    server_node_init(&server->server_node);
-    server->server_node.bulb_server = server;
+    server->server_node = server_shared_node_alloc();
+    server->server_node->bulb_server = server;
+    
+    bulb_register_shared_cmds();
     return server;
 
 fail:
@@ -236,6 +246,28 @@ bool server_listen(struct bulb_server* server)
     return true;
 }
 
+// Process server input. Returns true if a command was detected, otherwise false.
+bool server_input(struct bulb_server* server, const char* msg, bool* cmd_success)
+{
+    // Check if the first non-whitespace character of the message is a slash.
+    for (int i = 0, len = strlen(msg); i < len; i++)
+    {
+        if (isspace(msg[i]))
+            continue;
+        if (msg[i] != '/')
+            break;
+        
+        bool result = bulb_parse_cmd_input(server->server_node, msg + i + 1);
+        if (cmd_success != NULL)
+            *cmd_success = result;
+        return true;
+    }
+    
+    LOOP_CLIENTS(server->server_node, NULL, node, 
+        message_obj_write(&node->mt_sock, "[SERVER]", msg, true));
+    return false;
+}
+
 // Shut down and free a server instance.
 void server_free(struct bulb_server* server)
 {
@@ -244,7 +276,7 @@ void server_free(struct bulb_server* server)
     WSACleanup();
 #endif
 
-    server_disconnect_all_clients(&server->server_node);
+    server_disconnect_all_clients(server->server_node);
     closesocket(server->listen_sock);
     tagged_free(server, TAG_BULB_SERVER);
 }

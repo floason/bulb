@@ -5,6 +5,10 @@
 // - Console co-ordinates on Windows start from (0, 0), however when using ANSI
 //   sequences, they should be expected to start from (1, 1) instead.
 
+// While this code is specifically purposed for Bulb's CLI binary, this header
+// can be re-purposed for other projects, hence its placement in the root src/
+// directory.
+
 #include <stdbool.h>
 #include <ctype.h>
 #include <threads.h>

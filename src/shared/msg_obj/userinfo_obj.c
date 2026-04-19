@@ -32,14 +32,14 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
 {
 #ifdef SERVER
     // Reject clients with empty usernames.
-    if (strlen(obj->name) == 0)
+    if (strlen(obj->info.name) == 0)
     {
         stdout_obj_write(&client->mt_sock, "Your username cannot be empty!\n");
         goto kick_client;
     }
 
     // Reject clients with non-renderable usernames.
-    if (!str_isprint(obj->name))
+    if (!str_isprint(obj->info.name))
     {
         stdout_obj_write(&client->mt_sock, "Your username must contain only displayable characters!\n");
         goto kick_client;
@@ -50,20 +50,20 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
 
     // Reject the client if its version does not match that of the server.
-    if (obj->major != MAJOR || obj->minor != MINOR || obj->patch != PATCH)
+    if (obj->info.major != MAJOR || obj->info.minor != MINOR || obj->info.patch != PATCH)
     {
         // Attempt to inform the client that its version number is incorrect.
         char client_buffer[256];
-        snprintf(client_buffer, sizeof(client_buffer), "Your client version is %d.%d.%d, however the "  \
-            "server expects a client version of %d.%d.%d!\n", obj->major, obj->minor, obj->patch, MAJOR,
-            MINOR, PATCH);
+        snprintf(client_buffer, sizeof(client_buffer), "Your client version is %d.%d.%d, however the "   \
+            "server expects a client version of %d.%d.%d!\n", obj->info.major, obj->info.minor, 
+            obj->info.patch, MAJOR, MINOR, PATCH);
         stdout_obj_write(&client->mt_sock, client_buffer);
 
         // Report the invalid version of the connecting client to the server 
         // console.
-        fprintf(stderr, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d (server " \
-            "expects version %d.%d.%d)\n", obj->name, ip_str, obj->major, obj->minor, obj->patch, 
-            MAJOR, MINOR, PATCH);
+        server_printf(server, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d (server " \
+            "expects version %d.%d.%d)\n", obj->info.name, ip_str, obj->info.major, obj->info.minor, 
+            obj->info.patch, MAJOR, MINOR, PATCH);
 
         goto kick_client;
     }
@@ -72,12 +72,12 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     bool client_kicked = false;
     LOOP_CLIENTS(server, client, node,
     {
-        if (strcmp(obj->name, node->userinfo->name) == 0)
+        if (strcmp(obj->info.name, node->userinfo->info.name) == 0)
         {
             stdout_obj_write(&client->mt_sock, 
                 "Sorry, another client is already connected with that name!\n");
-            fprintf(stderr, "Client \"%s\" (%s) failed to connect as the given username is already "    \
-                "occupied\n", obj->name, ip_str);
+            server_printf(server, "Client \"%s\" (%s) failed to connect as the given username is "      \
+                "already occupied\n", obj->info.name, ip_str);
             
             client_kicked = true;
             break;
@@ -93,11 +93,11 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     LOOP_CLIENTS(server, NULL, node,
     {
         char buffer[64 + MAX_NAME_LENGTH];
-        snprintf(buffer, sizeof(buffer), "Client \"%s\" has connected\n", client->userinfo->name);
+        snprintf(buffer, sizeof(buffer), "Client \"%s\" has connected\n", client->userinfo->info.name);
         stdout_obj_write(&node->mt_sock, buffer);
     });
     connect_obj_write(&client->mt_sock, NULL, true);
-    printf("Client \"%s\" (%s) has connected\n", client->userinfo->name, ip_str);
+    server_printf(server, "Client \"%s\" (%s) has connected\n", client->userinfo->info.name, ip_str);
 
     // Synchronise the client list on each client.
     LOOP_CLIENTS(server, client, node, 
@@ -109,7 +109,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     return;
 
 kick_client:
-    server_disconnect_client(server, client, false);
+    server_disconnect_client(server, client, false, true);
     return;
 #endif
 

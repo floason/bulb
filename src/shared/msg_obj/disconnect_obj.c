@@ -35,10 +35,10 @@ void disconnect_obj_process(struct disconnect_obj* obj,
 {
     LOOP_CLIENTS(server, client, node,
     {
-        if (strcmp(obj->name, node->userinfo->name) == 0)
+        if (strcmp(obj->name, node->userinfo->info.name) == 0)
         {
-            server_disconnect_client(server, node, true);
-            return;
+            server_disconnect_client(server, node, true, true);
+            break;
         }
     })
     tagged_free(obj, TAG_BULB_OBJ);

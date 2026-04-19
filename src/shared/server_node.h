@@ -31,6 +31,7 @@ struct server_node
 {
 #ifdef SERVER
     struct bulb_server* bulb_server;
+    SOCKET listen_sock;
 #endif
 
     // TODO: populate with server details such as name
@@ -49,14 +50,17 @@ struct server_node
 typedef void (*loop_clients_func)(struct server_node* server, struct client_node* client);
 
 // Initialise the server node.
-void server_node_init(struct server_node* node);
+struct server_node* server_shared_node_alloc();
 
 // Connect a new client to a server node's clients list.
 void server_connect_client(struct server_node* server, struct client_node* client);
 
 // Disconnect a client from a server node's clients list. This will free the client
 // node from memory.
-void server_disconnect_client(struct server_node* server, struct client_node* client, bool print_msg);
+void server_disconnect_client(struct server_node* server, 
+                              struct client_node* client, 
+                              bool print_msg, 
+                              bool unlink);
 
 // Check if a client is connected without iterating through the entire list of clients.
 // Returns the client node if found, othewrise NULL.
@@ -76,5 +80,9 @@ void server_free_flagged_client(struct server_node* server, struct client_node* 
 void server_free_flagged_clients(struct server_node* server);
 
 // Disconnect all connected clients from a server node's clients list. This will free
-// all client nodes from memory.
+// all client nodes from memory. This should only be called when the Bulb protocol is
+// being terminated as it frees the server node from memory.
 void server_disconnect_all_clients(struct server_node* server);
+
+// Print a message to the server console by triggering a SERVER_PRINT_STDOUT exception.
+void server_printf(struct server_node* server, char* buffer, ...);

@@ -9,6 +9,7 @@
 #include "userinfo_obj.h"
 
 #ifdef SERVER
+#   include "server.h"
 #   include "disconnect_obj.h"
 #   include "stdout_obj.h"
 #endif
@@ -16,12 +17,6 @@
 // Flag a client node for deletion.
 static inline void _client_flag_for_deletion(struct client_node* client)
 {
-    if (client->mt_sock.socket != INVALID_SOCKET)
-    {
-        shutdown(client->mt_sock.socket, SHUT_RDWR);
-        closesocket(client->mt_sock.socket);
-        client->mt_sock.socket = INVALID_SOCKET;
-    }
 #ifdef SERVER
     client_set_status(client, CLIENT_FLAGGED_FOR_DELETION);
 #else
@@ -29,6 +24,12 @@ static inline void _client_flag_for_deletion(struct client_node* client)
     // which is for the local client, which has its own cleanup mechanism.
     client_set_status(client, CLIENT_READY_TO_DELETE);
 #endif
+    if (client->mt_sock.socket != INVALID_SOCKET)
+    {
+        shutdown(client->mt_sock.socket, SHUT_RDWR);
+        closesocket(client->mt_sock.socket);
+        client->mt_sock.socket = INVALID_SOCKET;
+    }
 }
 
 // Close and free a client node.
@@ -39,12 +40,13 @@ static inline void _client_close(struct client_node* client)
     tagged_free(client, TAG_CLIENT_NODE);
 }
 
-// Initialize the server node.
-void server_node_init(struct server_node* node)
+// Initialise the server node.
+struct server_node* server_shared_node_alloc()
 {
-    memset(node, 0, sizeof(struct server_node));
-    mtx_init(&node->free_flagged_clients_mutex, mtx_plain | mtx_recursive);
-    node->clients = trie_new();
+    struct server_node* server = tagged_malloc(sizeof(struct server_node), TAG_SERVER_NODE);
+    mtx_init(&server->free_flagged_clients_mutex, mtx_plain | mtx_recursive);
+    server->clients = trie_new();
+    return server;
 }
 
 // Connect a new client to a server node's clients list.
@@ -52,7 +54,7 @@ void server_connect_client(struct server_node* server, struct client_node* clien
 {
     // The client node should already have its socket and userinfo configured.
 
-    trie_add(server->clients, client->userinfo->name, client);
+    trie_add(server->clients, client->userinfo->info.name, client);
     server->number_connected++;
 
     // See further client connection (i.e. authentication) code in msg_obj/userinfo_obj.c.
@@ -60,7 +62,10 @@ void server_connect_client(struct server_node* server, struct client_node* clien
 
 // Disconnect a client from a server node's clients list. This will free the client
 // node from memory.
-void server_disconnect_client(struct server_node* server, struct client_node* client, bool print_msg)
+void server_disconnect_client(struct server_node* server, 
+                              struct client_node* client, 
+                              bool print_msg, 
+                              bool unlink)
 {
 #ifdef SERVER
     // If the client did not fail server authentication checks, log whether it disconnected 
@@ -70,33 +75,41 @@ void server_disconnect_client(struct server_node* server, struct client_node* cl
     inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
     if (print_msg)
     {
-        if (client->userinfo)
+        if (client->userinfo != NULL)
         {
-            printf("Client \"%s\" (%s) has disconnected\n", client->userinfo->name, ip_str);
+            server_printf(server, "Client \"%s\" (%s) has disconnected\n", client->userinfo->info.name, 
+                ip_str);
 
             // The server reports this to clients, rather than simply printing this on each
             // client, so that I don't have to re-implement the same code used with stdout_obj
             // that allows client code to format console output properly.
             char buffer[64 + MAX_NAME_LENGTH];
             snprintf(buffer, sizeof(buffer), "Client \"%s\" has disconnected\n",
-                client->userinfo->name);
+                client->userinfo->info.name);
             LOOP_CLIENTS(server, client, node, stdout_obj_write(&node->mt_sock, buffer));
         }
         else
-            fprintf(stderr, "Client from address %s failed to connect\n", ip_str);
+            server_printf(server, "Client from address %s failed to connect\n", ip_str);
     }
 #endif
 
-    if (client->userinfo)
-        trie_delete(server->clients, client->userinfo->name);
-    LINKED_LIST_ADD(client, server->flagged_clients_list, server->flagged_clients_list_tail);
+    // By default, unlink should be toggled as server_disconnect_client should only be
+    // called for single clients. However, if the server shuts down, it must loop through
+    // every client in order to disconnect them. Unlinking them while traversing the tree
+    // is thus likely to cause a segmentation fault.
+    if (unlink)
+    {
+        if (client->userinfo)
+            trie_delete(server->clients, client->userinfo->info.name);
+        LINKED_LIST_ADD(client, server->flagged_clients_list, server->flagged_clients_list_tail);
+    }
 
     // Synchronise the client's departure with all other clients.
 #ifdef SERVER
     if (client->status == CLIENT_VALIDATED)
     {
         LOOP_CLIENTS(server, client, node, 
-            disconnect_obj_write(&node->mt_sock, client->userinfo->name));
+            disconnect_obj_write(&node->mt_sock, client->userinfo->info.name));
     }
 #endif
 
@@ -121,18 +134,18 @@ void server_kick(struct server_node* server, struct client_node* client, const c
     // Log the client's departure in the server console and to the client itself.
     char ip_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
-    fprintf(stderr, "Client \"%s\" (%s) has been kicked from the server: %s", client->userinfo->name, 
-        ip_str, msg);
+    server_printf(server, "Client \"%s\" (%s) has been kicked from the server: %s", 
+        client->userinfo->info.name, ip_str, msg);
     stdout_obj_write(&client->mt_sock, msg);
     
     // Write to all other clients that this user has been kicked.
     char buffer[1024 + MAX_NAME_LENGTH];
     snprintf(buffer, sizeof(buffer), "Client \"%s\" has been kicked from the server: %s",
-        client->userinfo->name, msg);
+        client->userinfo->info.name, msg);
     LOOP_CLIENTS(server, client, node, stdout_obj_write(&node->mt_sock, buffer));
 
     // Start disconnecting the client.
-    server_disconnect_client(server, client, false);
+    server_disconnect_client(server, client, false, true);
 #endif
 
     ASSERT(false, return);
@@ -142,7 +155,7 @@ void server_kick(struct server_node* server, struct client_node* client, const c
 void server_free_flagged_client(struct server_node* server, struct client_node* client)
 {
     ASSERT(client->status == CLIENT_READY_TO_DELETE, return, 
-        "Attempted to delete client \"%s\", which is not ready to delete!", client->userinfo->name);
+        "Attempted to delete client \"%s\", which is not ready to delete!", client->userinfo->info.name);
 
     LINKED_LIST_REMOVE(client, server->flagged_clients_list, server->flagged_clients_list_tail);
     _client_close(client);
@@ -167,7 +180,7 @@ void server_free_flagged_clients(struct server_node* server)
 
 // Disconnect all connected clients from a server node's clients list. This will free
 // all client nodes from memory. This should only be called when the Bulb protocol is
-// being terminated.
+// being terminated as it frees the server node from memory.
 void server_disconnect_all_clients(struct server_node* server)
 {
     TRIE_DFS(server->clients, node,
@@ -177,4 +190,19 @@ void server_disconnect_all_clients(struct server_node* server)
         _client_close(client);
     });
     trie_free(server->clients);
+    tagged_free(server, TAG_SERVER_NODE);
+}
+
+// Print a message to the server console by triggering a SERVER_PRINT_STDOUT exception.
+void server_printf(struct server_node* server, char* buffer, ...)
+{
+#ifdef SERVER
+    va_list argv;
+    char message[2048];
+    va_start(argv, buffer);
+    vsnprintf(message, sizeof(message), buffer, argv);
+    va_end(argv);
+
+    server_throw_exception(server->bulb_server, SERVER_PRINT_STDOUT, (void*)message);
+#endif
 }

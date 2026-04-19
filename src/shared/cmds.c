@@ -12,6 +12,7 @@
 #include "client_node.h"
 #include "server_node.h"
 #include "userinfo_obj.h"
+#include "stdout_obj.h"
 
 #ifdef CLIENT
 #   include "client.h"
@@ -24,11 +25,12 @@ static struct trie* bulb_cmds;
 // status: lists information about the Bulb protocol and server.
 bool _cmd_status(struct server_node* server, struct cmd_args* params)
 {
+    // TODO: re-write to not use printf
     bulb_printver();
     printf("no. connected: %d\n", server->number_connected);
     LOOP_CLIENTS(server, NULL, node, 
     {
-        printf("- \"%s\"", node->userinfo->name);
+        printf("- \"%s\"", node->userinfo->info.name);
 #ifdef SERVER
         char ip_str[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &node->addr.sin_addr, ip_str, sizeof(ip_str));
@@ -39,12 +41,17 @@ bool _cmd_status(struct server_node* server, struct cmd_args* params)
     return true;
 }
 
-// exit: terminate the connnection.
+// exit: terminate the protocol.
 bool _cmd_exit(struct server_node* server, struct cmd_args* params)
 {
 #ifdef CLIENT
     client_throw_exception(localclient->bulb_client, CLIENT_DISCONNECT, NULL);
 #else
+    LOOP_CLIENTS(server, NULL, node, 
+    {
+        stdout_obj_write(&node->mt_sock, "The server has been shut down.\n");
+        server_disconnect_client(server, node, true, false);
+    });
     server_throw_exception(server->bulb_server, SERVER_FINISH, NULL);
 #endif
     return true;
@@ -115,7 +122,6 @@ finish:
         tagged_free(next, TAG_TEMP);
         next = params->next;
     }
-
     
     return func != NULL;
 }

@@ -5,11 +5,13 @@
 
 #include <stdbool.h>
 
-#include "unisock.h"
 #include "bulb_macros.h"
-#include "client_node.h"
-#include "server_node.h"
-#include "userinfo_obj.h"
+#include "bulb_structs.h"
+
+#ifdef CLIENT
+#   include "client_node.h"
+#   include "server_node.h"
+#endif
 
 struct bulb_client;
 
@@ -21,7 +23,7 @@ enum client_error_state
 
     // Exceptions which do not disrupt the client instance.
     CLIENT_PRINT_STDOUT,        // data is const char*
-    CLIENT_RECEIVED_MESSAGE,    // data is client_message*
+    CLIENT_RECEIVED_MESSAGE,    // data is bulb_message*
 
     // Client disconnect that results in the client thread being ended.
     CLIENT_DISCONNECT, 
@@ -34,13 +36,6 @@ enum client_error_state
     CLIENT_AUTH_FAIL
 };
 
-// Client message struct.
-struct client_message
-{
-    const char* name;
-    const char* message;
-};
-
 // Return false to hint critical fault to the client.
 typedef bool (*client_exception_func)(struct bulb_client* client, 
                                       enum client_error_state error, 
@@ -49,53 +44,54 @@ typedef bool (*client_exception_func)(struct bulb_client* client,
 
 struct bulb_client
 {
-#ifdef WIN32
-    WSADATA _wsa_data;
-#endif
     struct addrinfo* addr_ptr;
     bool is_connected;
     bool disconnect_handled;    // Should be toggled by the exception handler on either
                                 // disconnect events.
     enum client_error_state error_state;
 
-    struct client_node* local_node;
-    struct server_node server_node;
-
     // Errors raised outside client_init() will invoke this function. If false is returned
     // for a non-critical error, the client will terminate.
     client_exception_func exception_handler;
+
+#ifdef CLIENT
+    struct client_node* local_node;
+    struct server_node* server_node;
+#endif
 };
 
 // Create a new client instance. Returns NULL on error.
-struct bulb_client* client_init(const char* host, const char* port, enum client_error_state* error_state);
+BULB_API struct bulb_client* client_init(const char* host, 
+                                         const char* port, 
+                                         enum client_error_state* error_state);
 
 // Set a custom exception handler.
-void client_set_exception_handler(struct bulb_client* client, client_exception_func func);
+BULB_API void client_set_exception_handler(struct bulb_client* client, client_exception_func func);
 
 // Start handling a non-critical exception. If the exception returns false,
 // it will be re-evaluated as a critical error and this function will return
 // false.
-bool client_throw_exception(struct bulb_client* client, 
-                            enum client_error_state error, 
-                            void* data);
+BULB_API bool client_throw_exception(struct bulb_client* client, 
+                                     enum client_error_state error, 
+                                     void* data);
 
 // Start handling a critical error.
-void client_throw_critical_error(struct bulb_client* client, 
-                                 enum client_error_state error, 
-                                 void* data);
+BULB_API void client_throw_critical_error(struct bulb_client* client, 
+                                          enum client_error_state error, 
+                                          void* data);
 
 // Connect the client. Returns false on error.
-bool client_connect(struct bulb_client* client);
+BULB_API bool client_connect(struct bulb_client* client);
 
 // Authenticate the user's connection. This must be called after the client successfully
 // connects to a server. Returns false on error.
-bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinfo);
+BULB_API bool client_authenticate(struct bulb_client* client, struct bulb_userinfo userinfo);
 
 // Is the client ready for communication?
-bool client_ready(struct bulb_client* client);
+BULB_API bool client_ready(struct bulb_client* client);
 
 // Process client input. Returns true if a command was detected, otherwise false.
-bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success);
+BULB_API bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success);
 
 // Free a client instance.
-void client_free(struct bulb_client* client);
+BULB_API void client_free(struct bulb_client* client);

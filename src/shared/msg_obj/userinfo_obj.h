@@ -11,7 +11,7 @@
 #include <stddef.h>
 
 #include "unisock.h"
-#include "bulb_macros.h"
+#include "bulb_structs.h"
 #include "server_node.h"
 #include "client_node.h"
 #include "bulb_obj.h"
@@ -19,14 +19,7 @@
 struct userinfo_obj
 {
     struct bulb_obj base;
-
-    // Known to all clients.
-    char name[MAX_NAME_LENGTH + 1];
-
-    // Used to authenticate the version of the client.
-    short major;
-    short minor;
-    short patch;
+    struct bulb_userinfo info;
 };
 
 // Read a userinfo_obj object. Returns NULL on failure.

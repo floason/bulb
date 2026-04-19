@@ -1,4 +1,4 @@
 # Bulb
-Bulb is a chat suite I have created, which obeys its own protocol. This repository allows you to compile both a client and server using the Bulb protocol.
+Bulb is a chat communications protocol.
 
-The client is a CLI.
+By default, the project compiles server and client libraries which provide the functions needed to establish communications via the Bulb protocol. If the `BULB_BUILD_CLI` CMake configuration parameter is specified, an additional binary is compiled, which provides a command-line interface for either the client (by default) or server libraries. This is the default method of communicating with other users, or for launching a new server, via the Bulb protocol.

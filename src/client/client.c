@@ -14,6 +14,10 @@
 #include "userinfo_obj.h"
 #include "message_obj.h"
 
+#ifdef WIN32
+    static WSADATA wsa_data;
+#endif
+
 // A thread is created for this function once a client instance connects
 // to a server successfully.
 static int _client_thread(void* c)
@@ -27,8 +31,6 @@ static int _client_thread(void* c)
         struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, error_msg, sizeof(error_msg));
         if (obj == NULL)
         {
-            if (error_msg[0] != '\0')
-                fprintf(stderr, "Client failed to read message object from server: %s\n", error_msg);
             if (!client->bulb_client->disconnect_handled)
                 client_throw_critical_error(client->bulb_client, CLIENT_FORCE_DISCONNECT, NULL);
             return 0;
@@ -45,14 +47,16 @@ static int _client_thread(void* c)
 }
 
 // Create a new client instance. Returns NULL on error.
-struct bulb_client* client_init(const char* host, const char* port, enum client_error_state* error_state)
+struct bulb_client* client_init(const char* host, 
+                                const char* port, 
+                                enum client_error_state* error_state)
 {
     struct bulb_client* client = tagged_malloc(sizeof(struct bulb_client), TAG_BULB_CLIENT);
 
     // If Winsock is being used, Winsock must be initialized beforehand.
     int result = 0;
 #ifdef WIN32
-    result = WSAStartup(MAKEWORD(2, 2), &client->_wsa_data);
+    result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
     ASSERT(result == 0, 
     { 
         client->error_state = CLIENT_WINSOCK_FAIL;
@@ -84,8 +88,7 @@ struct bulb_client* client_init(const char* host, const char* port, enum client_
     }, "Failed to create socket: %d\n", socket_errno());
     
     setup_mt_socket(&client->local_node->mt_sock, sock);
-    server_node_init(&client->server_node);
-    client->local_node->server_node = &client->server_node;
+    client->server_node = client->local_node->server_node = server_shared_node_alloc();
 
     bulb_register_shared_cmds();
     return client;
@@ -161,7 +164,7 @@ bool client_connect(struct bulb_client* client)
 
 // Authenticate the user's connection. This must be called after the client successfully
 // connects to a server. Returns false on error.
-bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinfo)
+bool client_authenticate(struct bulb_client* client, struct bulb_userinfo userinfo)
 {
     ASSERT(client, return false);
     ASSERT(client->is_connected, return false);
@@ -172,19 +175,21 @@ bool client_authenticate(struct bulb_client* client, struct userinfo_obj userinf
         return false; 
     }, "Your username cannot be empty!\n");
 
-    userinfo.base.type = BULB_USERINFO;
-    userinfo.base.size = sizeof(userinfo);
-    userinfo.major = MAJOR;
-    userinfo.minor = MINOR;
-    userinfo.patch = PATCH;
-    ASSERT(userinfo_obj_write(&client->local_node->mt_sock, &userinfo), 
+    struct userinfo_obj obj;
+    memcpy(&obj.info, &userinfo, sizeof(obj.info));
+    obj.base.type = BULB_USERINFO;
+    obj.base.size = sizeof(obj);
+    obj.info.major = MAJOR;
+    obj.info.minor = MINOR;
+    obj.info.patch = PATCH;
+    ASSERT(userinfo_obj_write(&client->local_node->mt_sock, &obj), 
     { 
         client->error_state = CLIENT_AUTH_FAIL;
         return false; 
     }, "The server connection has closed unexpectedly while authenticating.\n");
 
     client->local_node->userinfo = tagged_malloc(sizeof(struct userinfo_obj), TAG_BULB_OBJ);
-    memcpy(client->local_node->userinfo, &userinfo, sizeof(struct userinfo_obj));
+    memcpy(client->local_node->userinfo, &obj, sizeof(struct userinfo_obj));
 
     while (!client_ready(client));
     return true;
@@ -208,13 +213,13 @@ bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success
         if (msg[i] != '/')
             break;
         
-        bool result = bulb_parse_cmd_input(&client->server_node, msg + i + 1);
+        bool result = bulb_parse_cmd_input(client->server_node, msg + i + 1);
         if (cmd_success != NULL)
             *cmd_success = result;
         return true;
     }
     
-    message_obj_write(&client->local_node->mt_sock, client->local_node->userinfo->name, msg);
+    message_obj_write(&client->local_node->mt_sock, client->local_node->userinfo->info.name, msg, false);
     return false;
 }
 
@@ -232,7 +237,7 @@ void client_free(struct bulb_client* client)
     // connection is being terminated. Thus, every single client node should
     // also be cleaned up in the process. This also cleans up the current client's
     // client_node object respectively.
-    server_disconnect_all_clients(&client->server_node);
+    server_disconnect_all_clients(client->server_node);
 
     if (client->addr_ptr != NULL)
         freeaddrinfo(client->addr_ptr);
