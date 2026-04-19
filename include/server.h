@@ -83,5 +83,10 @@ BULB_API bool server_listen(struct bulb_server* server);
 // Process server input. Returns true if a command was detected, otherwise false.
 BULB_API bool server_input(struct bulb_server* server, const char* msg, bool* cmd_success);
 
+// Shut the server down in an orderly way. It is the caller's responsibility to
+// free the server afterwards, as this function does not guarantee the prompt
+// deletion of each previously-connected client.
+BULB_API void server_shutdown(struct bulb_server* server, int timeout);
+
 // Free a server instance.
 BULB_API void server_free(struct bulb_server* server);

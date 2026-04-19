@@ -53,6 +53,21 @@ static void _server_cleanup(struct bulb_server* server)
     server_free(server);
 }
 
+static void _clear_input_buffer_on_screen()
+{
+    // The current line length is calculated using the following format:
+    // NAME: MESSAGE
+    unsigned line_length = strlen(userinfo.name) + 2 + input_buffer_w;
+
+    // TODO: introduce in-depth text scanning for more sophisticated messages which
+    // contain newlines, as currently they would be parsed as just another character.
+    unsigned cursor_x, cursor_y;
+    unsigned num_columns = get_num_columns_for_console();
+    int lines = line_length / num_columns + 1;
+    get_console_cursor_pos(&cursor_x, &cursor_y);
+    clear_lines_from_y(cursor_y - lines + 1, lines);
+}
+
 static void _print_message(const char* message)
 {   
     // Use mutex locking here to ensure that messages are outputted synchronously.
@@ -63,20 +78,9 @@ static void _print_message(const char* message)
     // NAME: MESSAGE
     unsigned line_length = strlen(userinfo.name) + 2 + input_buffer_w;
 
-    // If this client is ready to type input, we need to clear that off 
-    // the screen fines.
-    unsigned num_columns;
+    // Any pending client user input must be cleared first.
     if (waiting_for_input)
-    {
-        // TODO: introduce in-depth text scanning for more sophisticated messages which
-        // contain newlines, as currently they would be parsed as just another character.
-        unsigned cursor_x;
-        unsigned cursor_y;
-        get_console_cursor_pos(&cursor_x, &cursor_y);
-        num_columns = get_num_columns_for_console();
-        int lines = line_length / num_columns + 1;
-        clear_lines_from_y(cursor_y - lines + 1, lines);
-    }
+        _clear_input_buffer_on_screen();
 
     // Always print the message first, which should already be terminated with a newline.
     printf("%s", message);
@@ -86,7 +90,7 @@ static void _print_message(const char* message)
     if (waiting_for_input)
     {
         printf("%s: %s", name_buffer, input_buffer);
-        if (line_length % num_columns == 0)
+        if (line_length % get_num_columns_for_console() == 0)
             printf("\n");
     }
 
@@ -109,6 +113,8 @@ static bool _client_exception_handler(struct bulb_client* client,
         case CLIENT_AUTH_FAIL:
         case CLIENT_DISCONNECT:
             client->disconnect_handled = true;
+            if (waiting_for_input)
+                _clear_input_buffer_on_screen();
             _client_cleanup(client);
             exit(0);
 

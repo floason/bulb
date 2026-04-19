@@ -47,12 +47,7 @@ bool _cmd_exit(struct server_node* server, struct cmd_args* params)
 #ifdef CLIENT
     client_throw_exception(localclient->bulb_client, CLIENT_DISCONNECT, NULL);
 #else
-    LOOP_CLIENTS(server, NULL, node, 
-    {
-        stdout_obj_write(&node->mt_sock, "The server has been shut down.\n");
-        server_disconnect_client(server, node, true, false);
-    });
-    server_throw_exception(server->bulb_server, SERVER_FINISH, NULL);
+    server_shutdown(server->bulb_server, 5);
 #endif
     return true;
 }

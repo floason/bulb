@@ -31,13 +31,15 @@ struct server_node
 {
 #ifdef SERVER
     struct bulb_server* bulb_server;
-    SOCKET listen_sock;
 #endif
 
     // TODO: populate with server details such as name
 
     unsigned number_connected;
+    unsigned number_pending_deletion;
     mtx_t free_flagged_clients_mutex;
+    mtx_t server_emptied_mutex;
+    cnd_t server_emptied_signal;
 
     // Dictionary of actual connected clients.
     struct trie* clients;

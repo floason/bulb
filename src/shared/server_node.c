@@ -17,24 +17,30 @@
 // Flag a client node for deletion.
 static inline void _client_flag_for_deletion(struct client_node* client)
 {
+    if (client_flagged_for_deletion(client))
+        return;
+
 #ifdef SERVER
     client_set_status(client, CLIENT_FLAGGED_FOR_DELETION);
+
+    // Shut down the socket's read channel as the server should no longer
+    // be reading anything from the client. This should immediately close
+    // the client's recv thread.
+    shutdown(client->mt_sock.socket, SHUT_RD);
 #else
     // This is fine as there only exists a single client thread in client code,
     // which is for the local client, which has its own cleanup mechanism.
     client_set_status(client, CLIENT_READY_TO_DELETE);
 #endif
-    if (client->mt_sock.socket != INVALID_SOCKET)
-    {
-        shutdown(client->mt_sock.socket, SHUT_RDWR);
-        closesocket(client->mt_sock.socket);
-        client->mt_sock.socket = INVALID_SOCKET;
-    }
 }
 
 // Close and free a client node.
 static inline void _client_close(struct client_node* client)
 {
+    shutdown(client->mt_sock.socket, SHUT_RDWR);
+    closesocket(client->mt_sock.socket);
+    client->mt_sock.socket = INVALID_SOCKET;
+
     if (client->userinfo != NULL)
         tagged_free(client->userinfo, TAG_BULB_OBJ);
     tagged_free(client, TAG_CLIENT_NODE);
@@ -45,6 +51,8 @@ struct server_node* server_shared_node_alloc()
 {
     struct server_node* server = tagged_malloc(sizeof(struct server_node), TAG_SERVER_NODE);
     mtx_init(&server->free_flagged_clients_mutex, mtx_plain | mtx_recursive);
+    mtx_init(&server->server_emptied_mutex, mtx_plain);
+    cnd_init(&server->server_emptied_signal);
     server->clients = trie_new();
     return server;
 }
@@ -91,6 +99,13 @@ void server_disconnect_client(struct server_node* server,
         else
             server_printf(server, "Client from address %s failed to connect\n", ip_str);
     }
+
+    // Synchronise the client's departure with all other clients.
+    if (client->status == CLIENT_VALIDATED)
+    {
+        LOOP_CLIENTS(server, NULL, node, 
+            disconnect_obj_write(&node->mt_sock, client->userinfo->info.name));
+    }
 #endif
 
     // By default, unlink should be toggled as server_disconnect_client should only be
@@ -103,15 +118,6 @@ void server_disconnect_client(struct server_node* server,
             trie_delete(server->clients, client->userinfo->info.name);
         LINKED_LIST_ADD(client, server->flagged_clients_list, server->flagged_clients_list_tail);
     }
-
-    // Synchronise the client's departure with all other clients.
-#ifdef SERVER
-    if (client->status == CLIENT_VALIDATED)
-    {
-        LOOP_CLIENTS(server, client, node, 
-            disconnect_obj_write(&node->mt_sock, client->userinfo->info.name));
-    }
-#endif
 
     server->number_connected--;
     _client_flag_for_deletion(client);

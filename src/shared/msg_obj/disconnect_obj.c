@@ -12,6 +12,10 @@
 #include "bulb_obj.h"
 #include "userinfo_obj.h"
 
+#ifdef CLIENT
+#   include "client.h"
+#endif
+
 // Read a disconnect_obj object. Returns NULL on failure.
 struct bulb_obj* disconnect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size)
 {
@@ -33,13 +37,18 @@ void disconnect_obj_process(struct disconnect_obj* obj,
                             struct server_node* server, 
                             struct client_node* client)
 {
-    LOOP_CLIENTS(server, client, node,
+#ifdef CLIENT
+    LOOP_CLIENTS(server, NULL, node,
     {
         if (strcmp(obj->name, node->userinfo->info.name) == 0)
         {
-            server_disconnect_client(server, node, true, true);
+            if (node == client)
+                client_throw_exception(client->bulb_client, CLIENT_DISCONNECT, NULL);
+            else
+                server_disconnect_client(server, node, true, true);
             break;
         }
     })
+#endif
     tagged_free(obj, TAG_BULB_OBJ);
 }

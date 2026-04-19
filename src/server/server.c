@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdbool.h>
 #include <threads.h>
+#include <stdatomic.h>
+#include <time.h>
 
 #include "unisock.h"
 #include "server.h"
@@ -13,6 +15,7 @@
 #include "obj_reader.h"
 #include "obj_process.h"
 #include "message_obj.h"
+#include "stdout_obj.h"
 
 #ifdef WIN32
     static WSADATA wsa_data;
@@ -38,15 +41,16 @@ static int _server_client_recv_thread(void* c)
         }
 
         if (client_flagged_for_deletion(client))
-        { 
-            cnd_signal(&client->mt_sock.send_signal);
-            client_set_status(client, CLIENT_READY_TO_DELETE);
-            return 0;
-        }
+            goto flagged_for_deletion;
 
-        ASSERT(bulb_process_object(obj, server, client), return 0,
+        ASSERT(bulb_process_object(obj, server, client), goto flagged_for_deletion,
             "Failed to process Bulb object of type %d\n", obj->type);
     }
+
+flagged_for_deletion:
+    cnd_signal(&client->mt_sock.send_signal);
+    client_set_status(client, CLIENT_READY_TO_DELETE);
+    return 0;
 }
 
 // Handle writing objects in a new thread for a given client connection asynchronously
@@ -63,12 +67,9 @@ static int _server_client_send_thread(void* c)
         while (!client_flagged_for_deletion(client) && QUEUE_EMPTY(client->mt_sock.send_queue))
             cnd_wait(&client->mt_sock.send_signal, &client->send_thread_lock);
 
-        // If the client is flagged for deletion, exit.
-        if (client_flagged_for_deletion(client))
-        {
-            client_set_status(client, CLIENT_READY_TO_DELETE);
-            return 0;
-        }
+        // If the client is flagged for deletion, exit only once there's nothing to send.
+        if (client_flagged_for_deletion(client) && QUEUE_EMPTY(client->mt_sock.send_queue))
+            goto flagged_for_deletion;
 
         // Handle writing whatever is currently enqueued in the client socket's send
         // queue. Everything must be written before the send thread mutex is unlocked,
@@ -82,12 +83,21 @@ static int _server_client_send_thread(void* c)
             int written = send(client->mt_sock.socket, node->data, node->len, MSG_NOSIGNAL);
             tagged_free(node, TAG_TEMP);
             if (written == SOCKET_ERROR)
-                return 0;
+                goto flagged_for_deletion;
         }
         while (!QUEUE_EMPTY(client->mt_sock.send_queue));
 
+        // If the client is flagged for deletion and all pending objects have finally been
+        // written, exit.
+        if (client_flagged_for_deletion(client))
+            goto flagged_for_deletion;
+
         mtx_unlock(&client->send_thread_lock);
     }
+
+flagged_for_deletion:
+    client_set_status(client, CLIENT_READY_TO_DELETE);
+    return 0;
 }
 
 // A thread is created for this function whenever a server instance starts listening
@@ -107,6 +117,7 @@ static int _server_listen_thread(void* s)
         {
             tagged_free(node, TAG_CLIENT_NODE);
             if (server->disconnect_handled 
+                || server->listen_sock == INVALID_SOCKET
                 || !server_throw_exception(server, SERVER_CLIENT_ACCEPT_FAIL, NULL))
                 return 0;
             continue;
@@ -249,6 +260,9 @@ bool server_listen(struct bulb_server* server)
 // Process server input. Returns true if a command was detected, otherwise false.
 bool server_input(struct bulb_server* server, const char* msg, bool* cmd_success)
 {
+    ASSERT(server, return false);
+    ASSERT(server->is_listening, return false; );
+
     // Check if the first non-whitespace character of the message is a slash.
     for (int i = 0, len = strlen(msg); i < len; i++)
     {
@@ -268,15 +282,58 @@ bool server_input(struct bulb_server* server, const char* msg, bool* cmd_success
     return false;
 }
 
+// Shut the server down in an orderly way. It is the caller's responsibility to
+// free the server afterwards, as this function does not guarantee the prompt
+// deletion of each previously-connected client.
+void server_shutdown(struct bulb_server* server, int timeout)
+{
+    ASSERT(server, return);
+    ASSERT(server->is_listening, return; );
+    
+    // Shutdown the server's listen socket to prevent any new clients from joining.
+    closesocket(server->listen_sock);
+    server->listen_sock = INVALID_SOCKET;
+
+    LOOP_CLIENTS(server->server_node, NULL, node, 
+    {
+        stdout_obj_write(&node->mt_sock, "The server has been shut down.\n");
+        server_disconnect_client(server->server_node, node, true, false);
+    });
+
+    struct timespec timestamp;
+    timespec_get(&timestamp, TIME_UTC);
+
+    // Wait for all final client objects to be written before the server closes. 
+    // The server should timeout after some time if some clients inevitably don't 
+    // respond.
+    struct timespec current = timestamp;
+    timestamp.tv_sec += timeout;
+    mtx_lock(&server->server_node->server_emptied_mutex);
+    while (server->server_node->number_pending_deletion > 0 && timespec_cmp(&timestamp, &current) == 1)
+    {
+        cnd_timedwait(&server->server_node->server_emptied_signal, 
+            &server->server_node->server_emptied_mutex, &timestamp);
+        timespec_get(&current, TIME_UTC);
+    }
+
+    server_throw_exception(server, SERVER_FINISH, NULL);
+}
+
 // Shut down and free a server instance.
 void server_free(struct bulb_server* server)
 {
     ASSERT(server, return);
+
 #ifdef WIN32
     WSACleanup();
 #endif
 
+    if (server->listen_sock != INVALID_SOCKET)
+    {
+        closesocket(server->listen_sock);
+        server->listen_sock = INVALID_SOCKET;
+    }
+
     server_disconnect_all_clients(server->server_node);
-    closesocket(server->listen_sock);
     tagged_free(server, TAG_BULB_SERVER);
 }

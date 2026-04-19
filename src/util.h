@@ -10,6 +10,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <time.h>
 
 #if defined __unix__ || defined __APPLE__
 #   define __UNIX__
@@ -94,6 +95,15 @@ static inline int str_isprint(const char* str)
             return false;
     }
     return true;
+}
+
+// 0 = lhs == rhs, 1 = lhs > rhs, -1 = lhs < rhs
+static inline int timespec_cmp(struct timespec* lhs, struct timespec* rhs)
+{
+    if (lhs->tv_sec == rhs->tv_sec)
+        return MAX(MIN(lhs->tv_nsec - rhs->tv_nsec, 1), -1);
+    else
+        return MAX(MIN(lhs->tv_sec - rhs->tv_sec, 1), -1);
 }
 
 static inline void* quick_calloc(size_t count, size_t size)
