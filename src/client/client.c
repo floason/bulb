@@ -70,22 +70,22 @@ struct bulb_client* client_init(const char* host,
     hints.ai_family = AF_INET;          // Use IPv4.
     hints.ai_socktype = SOCK_STREAM;    // Use reliable, segmented communication.
     result = getaddrinfo(host, port, &hints, &client->addr_ptr);
-    ASSERT(result == 0, 
+    if (result != 0)
     { 
         client->error_state = CLIENT_ADDRESS_FAIL;
         goto fail; 
-    }, "getaddrinfo() failed: %d\n", result);
+    }
 
     // Set up the local client node and instantiate its socket for server communication.
     client->local_node = localclient = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
     client->local_node->bulb_client = client;
     SOCKET sock = socket(client->addr_ptr->ai_family, client->addr_ptr->ai_socktype,
         client->addr_ptr->ai_protocol);
-    ASSERT(sock != INVALID_SOCKET, 
+    if (sock == INVALID_SOCKET)
     { 
         client->error_state = CLIENT_SOCKET_FAIL;
         goto fail; 
-    }, "Failed to create socket: %d\n", socket_errno());
+    }
     
     setup_mt_socket(&client->local_node->mt_sock, sock);
     client->server_node = client->local_node->server_node = server_shared_node_alloc();
@@ -149,11 +149,11 @@ bool client_connect(struct bulb_client* client)
 
     int result = connect(client->local_node->mt_sock.socket, client->addr_ptr->ai_addr, 
         (int)client->addr_ptr->ai_addrlen);
-    ASSERT(result != SOCKET_ERROR, 
+    if (result == SOCKET_ERROR)
     { 
         client->error_state = CLIENT_SOCKET_FAIL;
         return false; 
-    }, "Failed to connect the client: %d\n", socket_errno());
+    }
     freeaddrinfo(client->addr_ptr);
     client->addr_ptr = NULL;
     client->is_connected = true;
@@ -169,11 +169,11 @@ bool client_authenticate(struct bulb_client* client, struct bulb_userinfo userin
     ASSERT(client, return false);
     ASSERT(client->is_connected, return false);
     
-    ASSERT(strlen(userinfo.name) > 0, 
+    if (strlen(userinfo.name) == 0)
     { 
         client->error_state = CLIENT_AUTH_FAIL;
         return false; 
-    }, "Your username cannot be empty!\n");
+    }
 
     struct userinfo_obj obj;
     memcpy(&obj.info, &userinfo, sizeof(obj.info));
@@ -182,11 +182,11 @@ bool client_authenticate(struct bulb_client* client, struct bulb_userinfo userin
     obj.info.major = MAJOR;
     obj.info.minor = MINOR;
     obj.info.patch = PATCH;
-    ASSERT(userinfo_obj_write(&client->local_node->mt_sock, &obj), 
+    if (!userinfo_obj_write(&client->local_node->mt_sock, &obj))
     { 
         client->error_state = CLIENT_AUTH_FAIL;
         return false; 
-    }, "The server connection has closed unexpectedly while authenticating.\n");
+    }
 
     client->local_node->userinfo = tagged_malloc(sizeof(struct userinfo_obj), TAG_BULB_OBJ);
     memcpy(client->local_node->userinfo, &obj, sizeof(struct userinfo_obj));

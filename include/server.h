@@ -60,7 +60,7 @@ struct bulb_server
 };
 
 // Create a new server instance. error_state can be NULL. Returns NULL on error.
-BULB_API struct bulb_server* server_init(const char* port, enum server_error_state* error_state);
+BULB_API struct bulb_server* server_init(uint16_t port, enum server_error_state* error_state);
 
 // Start handling a non-critical exception. If the exception returns false,
 // it will be re-evaluated as a critical error and this function will return

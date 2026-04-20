@@ -138,7 +138,7 @@ static int _server_listen_thread(void* s)
 }
 
 // Create a new server instance. error_state can be NULL. Returns NULL on error.
-struct bulb_server* server_init(const char* port, enum server_error_state* error_state)
+struct bulb_server* server_init(uint16_t port, enum server_error_state* error_state)
 {
     struct bulb_server* server = tagged_malloc(sizeof(struct bulb_server), TAG_BULB_SERVER);
     server->listen_sock = INVALID_SOCKET;
@@ -154,6 +154,9 @@ struct bulb_server* server_init(const char* port, enum server_error_state* error
     }, "Winsock 2.2 failed to start:%d\n", result);
 #endif
 
+    char port_buffer[6] = { 0 }; // 0-65535 + \0
+    snprintf(port_buffer, sizeof(port_buffer), "%hu", port);
+
     // Resolve the hostname to listen to.
     struct addrinfo* addr_ptr = NULL;
     struct addrinfo hints;
@@ -161,27 +164,27 @@ struct bulb_server* server_init(const char* port, enum server_error_state* error
     hints.ai_family = AF_INET;          // Use IPv4.
     hints.ai_socktype = SOCK_STREAM;    // Use reliable, segmented communication.
     hints.ai_flags = AI_PASSIVE;        // Required for binding.
-    result = getaddrinfo(NULL, port, &hints, &addr_ptr);
-    ASSERT(result == 0, 
+    result = getaddrinfo(NULL, port_buffer, &hints, &addr_ptr);
+    if (result != 0)
     {
         server->error_state = SERVER_ADDRESS_FAIL;
         goto fail; 
-    }, "getaddrinfo() failed: %d\n", result);
+    }
 
     // Create and bind the socket for the server to listen to client connections.
     server->listen_sock = socket(addr_ptr->ai_family, addr_ptr->ai_socktype,
         addr_ptr->ai_protocol);
-    ASSERT(server->listen_sock != INVALID_SOCKET, 
+    if (server->listen_sock == INVALID_SOCKET)
     { 
         server->error_state = SERVER_LISTEN_SOCKET_FAIL;
         goto fail; 
-    }, "Failed to create socket: %d\n", socket_errno());
+    }
     result = bind(server->listen_sock, addr_ptr->ai_addr, (int)addr_ptr->ai_addrlen);
-    ASSERT(result != SOCKET_ERROR, 
+    if (result == SOCKET_ERROR)
     {
         server->error_state = SERVER_LISTEN_SOCKET_FAIL;
         goto fail; 
-    }, "Failed to bind to socket localhost:%d: %d\n", port, socket_errno());
+    }
     freeaddrinfo(addr_ptr);
 
     server->server_node = server_shared_node_alloc();
@@ -246,11 +249,11 @@ bool server_listen(struct bulb_server* server)
     ASSERT(!server->is_listening, return false; );
 
     int result = listen(server->listen_sock, SOMAXCONN);
-    ASSERT(result != SOCKET_ERROR, 
+    if (result == SOCKET_ERROR)
     { 
         server->error_state = SERVER_LISTEN_SOCKET_FAIL;
         return false; 
-    }, "Failed to start listening for connections: %d\n", socket_errno());
+    }
     server->is_listening = true;
 
     thrd_create(&server->listen_thread, _server_listen_thread, (void*)server);
@@ -336,4 +339,6 @@ void server_free(struct bulb_server* server)
 
     server_disconnect_all_clients(server->server_node);
     tagged_free(server, TAG_BULB_SERVER);
+
+    bulb_cmds_cleanup();
 }

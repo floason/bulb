@@ -21,6 +21,7 @@
 #endif
 
 static struct trie* bulb_cmds;
+static unsigned bulb_cmds_ref_count;
 
 // status: lists information about the Bulb protocol and server.
 bool _cmd_status(struct server_node* server, struct cmd_args* params)
@@ -52,15 +53,17 @@ bool _cmd_exit(struct server_node* server, struct cmd_args* params)
     return true;
 }
 
-// Register a new command.
-void bulb_register_cmd(const char* name, bulb_cmd_func func)
+// Register a new command. Returns true upon successful registration, otherwise 
+// false.
+bool bulb_register_cmd(const char* name, bulb_cmd_func func)
 {
     if (bulb_cmds == NULL)
         bulb_cmds = trie_new();
 
-    ASSERT(strlen(name) <= MAX_CMD_NAME_LENGTH, return);
-    ASSERT(trie_find(bulb_cmds, name) == NULL, return);
+    if (strlen(name) > MAX_CMD_NAME_LENGTH || trie_find(bulb_cmds, name) != NULL)
+        return false;
     trie_add(bulb_cmds, name, func);
+    return true;
 }
 
 // Parse a command prompt and invoke the appropriate command. Returns false if
@@ -124,13 +127,19 @@ finish:
 // Register all shared commands.
 void bulb_register_shared_cmds()
 {
-    bulb_register_cmd("status", _cmd_status);
-    bulb_register_cmd("exit", _cmd_exit);
+    if (bulb_cmds_ref_count++ == 0)
+    {
+        bulb_register_cmd("status", _cmd_status);
+        bulb_register_cmd("exit", _cmd_exit);
+    }
 }
 
 // Cleanup on process exit.
 void bulb_cmds_cleanup()
 {
-    if (bulb_cmds != NULL)
-        trie_free(bulb_cmds);
+    if (--bulb_cmds_ref_count == 0)
+    {
+        if (bulb_cmds != NULL)
+            trie_free(bulb_cmds);
+    }
 }

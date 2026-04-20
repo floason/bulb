@@ -13,7 +13,6 @@
 #include "server_node.h"
 #include "client_node.h"
 #include "bulb_obj.h"
-#include "userinfo_obj.h"
 
 struct disconnect_obj
 {

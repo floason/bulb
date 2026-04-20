@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include <memory.h>
 #include <string.h>
@@ -219,9 +220,18 @@ int main(int argc, char** argv)
 
         strncpy(userinfo.name, "[SERVER]", sizeof(userinfo.name));
 
-        // TODO: try probing successive ports on SERVER_ADDRESS_FAIL
-        server = server_init(STR(FIRST_PORT), NULL);
+        // TODO: accept custom port
+        enum server_error_state error_state;
+        uint16_t port = FIRST_PORT;
+        while ((server = server_init(port, &error_state)) == NULL 
+            && (error_state == SERVER_LISTEN_SOCKET_FAIL 
+            && port < FIRST_PORT + 10))
+        {
+            printf("Could not start server using port %hu...\n", port);
+            port++;
+        }
         ASSERT(server, return 1);
+        printf("Listening on port %hu\n", port);
 
         server_set_exception_handler(server, _server_exception_handler);
         ASSERT(server_listen(server), goto fail);

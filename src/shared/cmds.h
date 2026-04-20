@@ -18,8 +18,9 @@ struct cmd_args
 
 typedef bool (*bulb_cmd_func)(struct server_node* server, struct cmd_args* params);
 
-// Register a new command.
-void bulb_register_cmd(const char* name, bulb_cmd_func func);
+// Register a new command. Returns true upon successful registration, otherwise 
+// false.
+bool bulb_register_cmd(const char* name, bulb_cmd_func func);
 
 // Parse a command prompt and invoke the appropriate command. Returns false if
 // the command was not found.
