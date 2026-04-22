@@ -7,6 +7,7 @@
 #include <threads.h>
 
 #include "bulb_macros.h"
+#include "bulb_structs.h"
 
 #ifdef SERVER
 #   include "unisock.h"
@@ -76,6 +77,9 @@ BULB_API void server_throw_critical_error(struct bulb_server* server,
 
 // Set a custom exception handler.
 BULB_API void server_set_exception_handler(struct bulb_server* server, server_exception_func func);
+
+// Set the server's identifiable information.
+BULB_API void server_set_userinfo(struct bulb_server* server, struct bulb_userinfo* userinfo);
 
 // Start accepting new clients asynchronously. Returns false on error.
 BULB_API bool server_listen(struct bulb_server* server);

@@ -13,7 +13,7 @@
 #include "userinfo_obj.h"
 
 #ifdef CLIENT
-#   include "client.h"
+#   include "bulb_client.h"
 #endif
 
 // Read a disconnect_obj object. Returns NULL on failure.

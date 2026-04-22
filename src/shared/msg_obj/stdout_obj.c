@@ -14,7 +14,7 @@
 #include "userinfo_obj.h"
 
 #ifdef CLIENT
-#   include "client.h"
+#   include "bulb_client.h"
 #endif
 
 // Read a stdout_obj. Returns NULL on failure.

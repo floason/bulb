@@ -10,7 +10,8 @@
 #include <time.h>
 
 #include "unisock.h"
-#include "server.h"
+#include "bulb_structs.h"
+#include "bulb_server.h"
 #include "cmds.h"
 #include "obj_reader.h"
 #include "obj_process.h"
@@ -240,6 +241,12 @@ void server_throw_critical_error(struct bulb_server* server,
     // Invoke the exception handler.
     server->exception_handler(server, error, true, data);
     server->error_state = error;
+}
+
+// Set the server's identifiable information.
+void server_set_userinfo(struct bulb_server* server, struct bulb_userinfo* userinfo)
+{
+    memcpy(&server->server_node->info, userinfo, sizeof(server->server_node->info));
 }
 
 // Start accepting new clients asynchronously. Returns false on error.

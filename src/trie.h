@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <threads.h>
+#include <stddef.h>
 
 #define TRIE_DFS(ROOT, ID, SCOPE)                                               \
     {                                                                           \
@@ -33,6 +34,7 @@ struct trie
 {
     char prefix;
     void* value;
+    bool value_copied;
     struct trie* parent;
     struct trie* children;
 
@@ -43,9 +45,13 @@ struct trie
 // Create a new trie.
 struct trie* trie_new();
 
-// Add a new entry to the trie. Returns false if the key already exists, 
-// or on failure.
-bool trie_add(struct trie* trie, const char* key, void* value);
+// Add a new entry to the trie. Returns the trie node if the key already 
+// exists, or NULL on failure.
+struct trie* trie_add(struct trie* trie, const char* key, void* value);
+
+// Add a new entry to the trie by copying its value instead of referencing it. 
+// Returns the trie node if the key already exists, or NULL on failure.
+struct trie* trie_add_copy(struct trie* trie, const char* key, void* value, size_t size);
 
 // Search for an entry in the trie. Returns NULL if the value is not found,
 // or on failure.

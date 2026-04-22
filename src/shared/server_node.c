@@ -9,7 +9,7 @@
 #include "userinfo_obj.h"
 
 #ifdef SERVER
-#   include "server.h"
+#   include "bulb_server.h"
 #   include "disconnect_obj.h"
 #   include "stdout_obj.h"
 #endif

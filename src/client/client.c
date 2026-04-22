@@ -7,7 +7,7 @@
 
 #include "unisock.h"
 #include "bulb_version.h"
-#include "client.h"
+#include "bulb_client.h"
 #include "cmds.h"
 #include "obj_reader.h"
 #include "obj_process.h"
@@ -164,19 +164,19 @@ bool client_connect(struct bulb_client* client)
 
 // Authenticate the user's connection. This must be called after the client successfully
 // connects to a server. Returns false on error.
-bool client_authenticate(struct bulb_client* client, struct bulb_userinfo userinfo)
+bool client_authenticate(struct bulb_client* client, struct bulb_userinfo* userinfo)
 {
     ASSERT(client, return false);
     ASSERT(client->is_connected, return false);
     
-    if (strlen(userinfo.name) == 0)
+    if (strlen(userinfo->name) == 0)
     { 
         client->error_state = CLIENT_AUTH_FAIL;
         return false; 
     }
 
     struct userinfo_obj obj;
-    memcpy(&obj.info, &userinfo, sizeof(obj.info));
+    memcpy(&obj.info, userinfo, sizeof(obj.info));
     obj.base.type = BULB_USERINFO;
     obj.base.size = sizeof(obj);
     obj.info.major = MAJOR;

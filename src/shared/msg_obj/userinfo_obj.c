@@ -1,9 +1,10 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
-// This object is used for two purposes:
+// This object is used for three purposes:
 // 1) Authenticate a user connection with the server.
 // 2) Store user information of each connected client.
+// 3) Copy server information to a connecting client.
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -99,6 +100,13 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     connect_obj_write(&client->mt_sock, NULL, true);
     server_printf(server, "Client \"%s\" (%s) has connected\n", client->userinfo->info.name, ip_str);
 
+    // Send the server's userinfo node to the client.
+    struct userinfo_obj server_obj;
+    memcpy(&server_obj.info, &server->info, sizeof(server_obj.info));
+    server_obj.base.type = BULB_USERINFO;
+    server_obj.base.size = sizeof(server_obj);
+    userinfo_obj_write(&client->mt_sock, &server_obj);
+
     // Synchronise the client list on each client.
     LOOP_CLIENTS(server, client, node, 
     {
@@ -111,7 +119,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
 kick_client:
     server_disconnect_client(server, client, false, true);
     return;
+#else
+    memcpy(&server->info, &obj->info, sizeof(server->info));
 #endif
-
-    ASSERT(false, return);
 }

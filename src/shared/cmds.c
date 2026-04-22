@@ -15,9 +15,9 @@
 #include "stdout_obj.h"
 
 #ifdef CLIENT
-#   include "client.h"
+#   include "bulb_client.h"
 #else
-#   include "server.h"
+#   include "bulb_server.h"
 #endif
 
 static struct trie* bulb_cmds;
@@ -28,6 +28,7 @@ bool _cmd_status(struct server_node* server, struct cmd_args* params)
 {
     // TODO: re-write to not use printf
     bulb_printver();
+    printf("server \"%s\": \"%s\"\n", server->info.name, server->info.description);
     printf("no. connected: %d\n", server->number_connected);
     LOOP_CLIENTS(server, NULL, node, 
     {
@@ -37,7 +38,7 @@ bool _cmd_status(struct server_node* server, struct cmd_args* params)
         inet_ntop(AF_INET, &node->addr.sin_addr, ip_str, sizeof(ip_str));
         printf(" (%s)", ip_str);
 #endif
-        puts("");
+        printf(" desc \"%s\"\n", node->userinfo->info.description);
     });
     return true;
 }

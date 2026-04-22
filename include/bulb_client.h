@@ -85,7 +85,7 @@ BULB_API bool client_connect(struct bulb_client* client);
 
 // Authenticate the user's connection. This must be called after the client successfully
 // connects to a server. Returns false on error.
-BULB_API bool client_authenticate(struct bulb_client* client, struct bulb_userinfo userinfo);
+BULB_API bool client_authenticate(struct bulb_client* client, struct bulb_userinfo* userinfo);
 
 // Is the client ready for communication?
 BULB_API bool client_ready(struct bulb_client* client);

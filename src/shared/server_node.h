@@ -10,6 +10,7 @@
 #include <stdbool.h>
 
 #include "unisock.h"
+#include "bulb_structs.h"
 #include "trie.h"
 #include "client_node.h"   
     
@@ -33,7 +34,7 @@ struct server_node
     struct bulb_server* bulb_server;
 #endif
 
-    // TODO: populate with server details such as name
+    struct bulb_userinfo info;
 
     unsigned number_connected;
     unsigned number_pending_deletion;

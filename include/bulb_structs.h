@@ -10,6 +10,7 @@
 struct bulb_userinfo
 {
     char name[MAX_NAME_LENGTH + 1];
+    char description[MAX_DESC_LENGTH + 1];
 
     // Used to authenticate the version of the Bulb protocol.
     short major;

@@ -1,9 +1,10 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
-// This object is used for two purposes:
+// This object is used for three purposes:
 // 1) Authenticate a user connection with the server.
 // 2) Store user information of each connected client.
+// 3) Copy server information to a connecting client.
 
 #pragma once
 

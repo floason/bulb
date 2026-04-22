@@ -15,9 +15,9 @@
 #include "message_obj.h"
 
 #ifdef CLIENT
-#   include "client.h"
+#   include "bulb_client.h"
 #else
-#   include "server.h"
+#   include "bulb_server.h"
 #endif
 
 // Read a message_obj object. Returns NULL on failure.
