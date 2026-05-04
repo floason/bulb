@@ -35,6 +35,7 @@ bool connect_obj_write(struct mt_socket* sock, struct userinfo_obj* userinfo, bo
 // Process a connect_obj object.
 void connect_obj_process(struct connect_obj* obj, struct server_node* server, struct client_node* client)
 {
+#ifdef CLIENT
     // This should only be called on each client after the server has finished validating a new client.
 
     // Because of the aforementioned precondition, we can mark this client as validated, if not done so
@@ -55,5 +56,6 @@ void connect_obj_process(struct connect_obj* obj, struct server_node* server, st
 
 finish:
     server_connect_client(server, node);
+#endif
     tagged_free(obj, TAG_BULB_OBJ);
 }

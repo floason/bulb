@@ -16,6 +16,15 @@ struct bulb_userinfo
     short major;
     short minor;
     short patch;
+
+    // Settings applicable to both client or server.
+    unsigned timeout_s;
+
+    // Server-only settings.
+    unsigned server_shutdown_timeout_s;
+
+    // Variables modified by the running server instance.
+    unsigned ping_ms;
 };
 
 struct bulb_message
@@ -24,3 +33,17 @@ struct bulb_message
     const char* message;
     bool is_server;
 };
+
+// Set default settings for a bulb_userinfo struct instance.
+static inline void bulb_userinfo_defaults(struct bulb_userinfo* userinfo, bool is_server)
+{
+    if (is_server)
+    {
+        userinfo->timeout_s = 300;
+        userinfo->server_shutdown_timeout_s = 5;
+    }
+    else
+    {
+        userinfo->timeout_s = 30;
+    }
+}

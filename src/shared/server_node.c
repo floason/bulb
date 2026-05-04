@@ -2,44 +2,51 @@
 // Licensed under the MIT License.
 
 #include <string.h>
+#include <stdatomic.h>
 
 #include "unisock.h"
 #include "trie.h"
 #include "server_node.h"
 #include "userinfo_obj.h"
+#include "disconnect_obj.h"
+#include "stdout_obj.h"
 
 #ifdef SERVER
 #   include "bulb_server.h"
-#   include "disconnect_obj.h"
-#   include "stdout_obj.h"
 #endif
 
 // Flag a client node for deletion.
-static inline void _client_flag_for_deletion(struct client_node* client)
+static inline void _client_flag_for_deletion(struct client_node* client, bool server_shutdown)
 {
     if (client_flagged_for_deletion(client))
         return;
 
+    // Signal to the client that the connection is being shut down.
 #ifdef SERVER
-    client_set_status(client, CLIENT_FLAGGED_FOR_DELETION);
-
-    // Shut down the socket's read channel as the server should no longer
-    // be reading anything from the client. This should immediately close
-    // the client's recv thread.
-    shutdown(client->mt_sock.socket, SHUT_RD);
-#else
-    // This is fine as there only exists a single client thread in client code,
-    // which is for the local client, which has its own cleanup mechanism.
-    client_set_status(client, CLIENT_READY_TO_DELETE);
+    disconnect_obj_write(&client->mt_sock, "", server_shutdown);
 #endif
+
+    // Flag the client for deletion.
+    client_set_status(client, CLIENT_FLAGGED_FOR_DELETION);
+    cnd_broadcast(&client->client_delete_signal);
+
+    // Only hint that the socket is being shut down after the client is flagged 
+    // deletion and the disconnect object has been written, so as to handle
+    // terminating all client-associated threads appropriately. This specific
+    // architecture is designed so that any pending objects can still be sent
+    // via the socket connection (as objects are enqueued before send() is called).
+    mt_socket_hint_shutdown(&client->mt_sock);
 }
 
 // Close and free a client node.
 static inline void _client_close(struct client_node* client)
 {
-    shutdown(client->mt_sock.socket, SHUT_RDWR);
-    closesocket(client->mt_sock.socket);
-    client->mt_sock.socket = INVALID_SOCKET;
+    if (client->mt_sock.socket != INVALID_SOCKET)
+        cleanup_mt_socket(&client->mt_sock);
+    mtx_destroy(&client->client_status_lock);
+    mtx_destroy(&client->send_thread_lock);
+    mtx_destroy(&client->ping_lock);
+    cnd_destroy(&client->client_delete_signal);
 
     if (client->userinfo != NULL)
         tagged_free(client->userinfo, TAG_BULB_OBJ);
@@ -68,12 +75,12 @@ void server_connect_client(struct server_node* server, struct client_node* clien
     // See further client connection (i.e. authentication) code in msg_obj/userinfo_obj.c.
 }   
 
-// Disconnect a client from a server node's clients list. This will free the client
-// node from memory.
+// Start disconnecting a client from a server node's clients list.
 void server_disconnect_client(struct server_node* server, 
                               struct client_node* client, 
                               bool print_msg, 
-                              bool unlink)
+                              bool unlink,
+                              bool server_shutdown)
 {
 #ifdef SERVER
     // If the client did not fail server authentication checks, log whether it disconnected 
@@ -103,8 +110,8 @@ void server_disconnect_client(struct server_node* server,
     // Synchronise the client's departure with all other clients.
     if (client->status == CLIENT_VALIDATED)
     {
-        LOOP_CLIENTS(server, NULL, node, 
-            disconnect_obj_write(&node->mt_sock, client->userinfo->info.name));
+        LOOP_CLIENTS(server, client, node, 
+            disconnect_obj_write(&node->mt_sock, client->userinfo->info.name, server_shutdown));
     }
 #endif
 
@@ -119,8 +126,11 @@ void server_disconnect_client(struct server_node* server,
         LINKED_LIST_ADD(client, server->flagged_clients_list, server->flagged_clients_list_tail);
     }
 
+    if (server_shutdown)
+        client->exit_is_orderly = true;
+
     server->number_connected--;
-    _client_flag_for_deletion(client);
+    _client_flag_for_deletion(client, server_shutdown);
 }
 
 // Check if a client is connected without iterating through the entire list of clients.
@@ -140,18 +150,19 @@ void server_kick(struct server_node* server, struct client_node* client, const c
     // Log the client's departure in the server console and to the client itself.
     char ip_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
-    server_printf(server, "Client \"%s\" (%s) has been kicked from the server: %s", 
+    server_printf(server, "Client \"%s\" (%s) has been kicked from the server: %s\n", 
         client->userinfo->info.name, ip_str, msg);
     stdout_obj_write(&client->mt_sock, msg);
     
     // Write to all other clients that this user has been kicked.
     char buffer[1024 + MAX_NAME_LENGTH];
-    snprintf(buffer, sizeof(buffer), "Client \"%s\" has been kicked from the server: %s",
+    snprintf(buffer, sizeof(buffer), "Client \"%s\" has been kicked from the server: %s\n",
         client->userinfo->info.name, msg);
     LOOP_CLIENTS(server, client, node, stdout_obj_write(&node->mt_sock, buffer));
 
     // Start disconnecting the client.
-    server_disconnect_client(server, client, false, true);
+    server_disconnect_client(server, client, false, true, false);
+    return;
 #endif
 
     ASSERT(false, return);
@@ -192,10 +203,15 @@ void server_disconnect_all_clients(struct server_node* server)
     TRIE_DFS(server->clients, node,
     {
         struct client_node* client = (struct client_node*)node;
-        _client_flag_for_deletion(client);
+        _client_flag_for_deletion(client, false);
         _client_close(client);
     });
     trie_free(server->clients);
+
+    mtx_destroy(&server->free_flagged_clients_mutex);
+    mtx_destroy(&server->server_emptied_mutex);
+    cnd_destroy(&server->server_emptied_signal);
+
     tagged_free(server, TAG_SERVER_NODE);
 }
 

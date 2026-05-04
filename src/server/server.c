@@ -12,11 +12,14 @@
 #include "unisock.h"
 #include "bulb_structs.h"
 #include "bulb_server.h"
+#include "server_node.h"
+#include "client_node.h"
 #include "cmds.h"
 #include "obj_reader.h"
 #include "obj_process.h"
 #include "message_obj.h"
 #include "stdout_obj.h"
+#include "ping_obj.h"
 
 #ifdef WIN32
     static WSADATA wsa_data;
@@ -24,7 +27,7 @@
 
 // Start reading and processing message objects in a new thread for a given client
 // connection.
-static int _server_client_recv_thread(void* c)
+static int server_client_recv_thread(void* c)
 {
     struct client_node* client = (struct client_node*)c;
     struct server_node* server = client->server_node;
@@ -38,7 +41,7 @@ static int _server_client_recv_thread(void* c)
             if (error_msg[0] != '\0')
                 server_kick(server, client, error_msg);
             else
-                server_disconnect_client(server, client, true, true);
+                server_disconnect_client(server, client, true, true, false);
         }
 
         if (client_flagged_for_deletion(client))
@@ -49,56 +52,47 @@ static int _server_client_recv_thread(void* c)
     }
 
 flagged_for_deletion:
-    cnd_signal(&client->mt_sock.send_signal);
     client_set_status(client, CLIENT_READY_TO_DELETE);
+    cnd_signal(&client->mt_sock.send_signal);
     return 0;
 }
 
-// Handle writing objects in a new thread for a given client connection asynchronously
-// from the main client object listen thread, so as to not disrupt the backbone client
-// thread if it attempts to communicate with other clients (message_obj in particular).
-static int _server_client_send_thread(void* c)
+// Asynchronously send ping objects to the assigned client momentarily.
+static int server_client_ping_thread(void* c)
 {
     struct client_node* client = (struct client_node*)c;
     struct server_node* server = client->server_node;
 
     for (;;)
     {
-        mtx_lock(&client->send_thread_lock);
-        while (!client_flagged_for_deletion(client) && QUEUE_EMPTY(client->mt_sock.send_queue))
-            cnd_wait(&client->mt_sock.send_signal, &client->send_thread_lock);
-
-        // If the client is flagged for deletion, exit only once there's nothing to send.
-        if (client_flagged_for_deletion(client) && QUEUE_EMPTY(client->mt_sock.send_queue))
-            goto flagged_for_deletion;
-
-        // Handle writing whatever is currently enqueued in the client socket's send
-        // queue. Everything must be written before the send thread mutex is unlocked,
-        // to allow for complete objects to be transmitted before any client disconnect
-        // may be handled.
-        do 
-        {
-            QUEUE_DEQUEUE(struct mt_socket_write_node* node, client->mt_sock.send_queue, 
-                client->mt_sock.send_queue_tail);
-
-            int written = send(client->mt_sock.socket, node->data, node->len, MSG_NOSIGNAL);
-            tagged_free(node, TAG_TEMP);
-            if (written == SOCKET_ERROR)
-                goto flagged_for_deletion;
-        }
-        while (!QUEUE_EMPTY(client->mt_sock.send_queue));
-
-        // If the client is flagged for deletion and all pending objects have finally been
-        // written, exit.
+        // If the client is flagged for deletion, exit.
         if (client_flagged_for_deletion(client))
-            goto flagged_for_deletion;
+        {
+            client_set_status(client, CLIENT_READY_TO_DELETE);
+            return 0;
+        }
 
-        mtx_unlock(&client->send_thread_lock);
+        // Write a ping object to the client, if ready.
+        if (client->ready_to_ping)
+        {
+            ping_obj_write(&client->mt_sock, false);
+            client->ready_to_ping = false;
+        }
+
+        // Hibernate for 5 seconds, or when client disconnect is signalled.
+        struct timespec timestamp;
+        struct timespec current;
+        timespec_get(&timestamp, TIME_UTC);
+        current = timestamp;
+        current.tv_sec += 5;
+        mtx_lock(&client->ping_lock);
+        while (!client_flagged_for_deletion(client) && timespec_cmp(&timestamp, &current) == 1)
+        {
+            cnd_timedwait(&client->client_delete_signal, &client->ping_lock, &timestamp);
+            timespec_get(&current, TIME_UTC);
+        }
+        mtx_unlock(&client->ping_lock);
     }
-
-flagged_for_deletion:
-    client_set_status(client, CLIENT_READY_TO_DELETE);
-    return 0;
 }
 
 // A thread is created for this function whenever a server instance starts listening
@@ -112,6 +106,7 @@ static int _server_listen_thread(void* s)
         int length = sizeof(struct sockaddr_in);
         struct client_node* node = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
         node->server_node = server->server_node;
+        client_shared_node_init(node);
         
         SOCKET sock = accept(server->listen_sock, (struct sockaddr*)&node->addr, &length);
         if (sock == INVALID_SOCKET)
@@ -123,13 +118,13 @@ static int _server_listen_thread(void* s)
                 return 0;
             continue;
         }
-
-        node->thread_ref_count = 2;
+        
         setup_mt_socket(&node->mt_sock, sock);
-        mtx_init(&node->send_thread_lock, mtx_plain);
-        mtx_init(&node->client_status_lock, mtx_plain);
-        thrd_create(&node->recv_thread, _server_client_recv_thread, (void*)node);
-        thrd_create(&node->send_thread, _server_client_send_thread, (void*)node);
+        mt_socket_set_non_blocking(&node->mt_sock);
+        node->mt_sock.timeout_duration = server->server_node->info.timeout_s;
+        SPAWN_CLIENT_THREAD(node, recv_thread);
+        SPAWN_CLIENT_THREAD(node, send_thread);
+        SPAWN_CLIENT_THREAD(node, ping_thread);
 
         // Periodically deallocate clients marked for deletion.
         server_free_flagged_clients(server->server_node);
@@ -307,7 +302,7 @@ void server_shutdown(struct bulb_server* server, int timeout)
     LOOP_CLIENTS(server->server_node, NULL, node, 
     {
         stdout_obj_write(&node->mt_sock, "The server has been shut down.\n");
-        server_disconnect_client(server->server_node, node, true, false);
+        server_disconnect_client(server->server_node, node, true, false, true);
     });
 
     struct timespec timestamp;

@@ -38,7 +38,8 @@ bool _cmd_status(struct server_node* server, struct cmd_args* params)
         inet_ntop(AF_INET, &node->addr.sin_addr, ip_str, sizeof(ip_str));
         printf(" (%s)", ip_str);
 #endif
-        printf(" desc \"%s\"\n", node->userinfo->info.description);
+        printf("\n   - desc \"%s\"\n   - ping %ums\n", node->userinfo->info.description, 
+            node->userinfo->info.ping_ms);
     });
     return true;
 }
@@ -47,9 +48,10 @@ bool _cmd_status(struct server_node* server, struct cmd_args* params)
 bool _cmd_exit(struct server_node* server, struct cmd_args* params)
 {
 #ifdef CLIENT
-    client_throw_exception(localclient->bulb_client, CLIENT_DISCONNECT, NULL);
+    localclient->exit_is_orderly = true;
+    server_disconnect_client(server, localclient, false, false, false);
 #else
-    server_shutdown(server->bulb_server, 5);
+    server_shutdown(server->bulb_server, server->info.server_shutdown_timeout_s);
 #endif
     return true;
 }

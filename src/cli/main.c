@@ -31,6 +31,20 @@
         return false;                                                                               \
     }
 
+#define CLI_CONVERT_ARG_TO_INT(VAR, ARG, CMD)                                                       \
+    {                                                                                               \
+        char* end;                                                                                  \
+        VAR = strtol(ARG, &end, 10);                                                                \
+        if (*end != '\0')                                                                           \
+            CLI_PRINT_CMD_ERROR(cmd, "Expected integer");                                           \
+    }
+
+#define CLI_SERVER_ONLY(CMD)                                                                        \
+    {                                                                                               \
+        if (!is_server)                                                                             \
+            CLI_PRINT_CMD_ERROR(cmd, "Server mode must be toggled")                                 \
+    }
+
 static bool is_server = false;
 static const char* custom_host = NULL;
 static uint16_t port = BULB_USE_DEFAULT_PORT;
@@ -93,10 +107,7 @@ static bool _cli_cmd_help(struct cli_cmd* cmd, const char* argument)
 
 static bool _cli_cmd_port(struct cli_cmd* cmd, const char* argument)
 {   
-    char* end;
-    port = strtol(argument, &end, 10);
-    if (*end != '\0')
-        CLI_PRINT_CMD_ERROR(cmd, "Expected integer");
+    CLI_CONVERT_ARG_TO_INT(port, argument, cmd);
     return true;
 }
 
@@ -109,6 +120,12 @@ static bool _cli_cmd_name(struct cli_cmd* cmd, const char* argument)
 static bool _cli_cmd_desc(struct cli_cmd* cmd, const char* argument)
 {
     strncpy(userinfo.description, argument, sizeof(userinfo.description));
+    return true;
+}
+
+static bool _cli_cmd_timeout(struct cli_cmd* cmd, const char* argument)
+{
+    CLI_CONVERT_ARG_TO_INT(userinfo.timeout_s, argument, cmd);
     return true;
 }
 
@@ -130,6 +147,13 @@ static bool _cli_cmd_server(struct cli_cmd* cmd, const char* argument)
     return true;
 }
 
+static bool _cli_cmd_server_shutdown_timeout(struct cli_cmd* cmd, const char* argument)
+{
+    CLI_SERVER_ONLY(cmd);
+    CLI_CONVERT_ARG_TO_INT(userinfo.server_shutdown_timeout_s, argument, cmd);
+    return true;
+}
+
 int main(int argc, char** argv)
 {
     int return_value = 0;
@@ -144,11 +168,15 @@ int main(int argc, char** argv)
     _cli_add_cmd("-p", "use specific port (default: 32765)", _cli_cmd_port, "port");
     _cli_add_cmd("-n", "set username", _cli_cmd_name, "name");
     _cli_add_cmd("-d", "set description", _cli_cmd_desc, "description");
+    _cli_add_cmd("-t", "set timeout (default: 300s on server, 30s on client)", _cli_cmd_timeout, 
+        "duration");
     _cli_add_cmd("--host", "connect to specific host address", _cli_cmd_host, "address");
     _cli_add_cmd("--disable-echo-input", "do not display input while typing (default: echoing on)",
         _cli_cmd_disable_input, NULL);
     _cli_add_cmd("--server", "launch Bulb CLI in server mode (default: client mode)", _cli_cmd_server, 
         NULL);
+    _cli_add_cmd("--server_shutdown_timeout", "set timeout duration when exit cmd called (default: 5s)",
+        _cli_cmd_server_shutdown_timeout, "duration");
 
     // Parse any given command line parameters.
     struct cli_cmd* identified_cmd = NULL;
@@ -188,7 +216,8 @@ int main(int argc, char** argv)
 
     enable_ansi_sequences();
     printf_clear_screen();
-    
+    bulb_userinfo_defaults(&userinfo, is_server);
+
     if (is_server)
     {
         // Running as a server.
@@ -266,6 +295,7 @@ new_iteration:
                     else
                         printf("%sCould not find command.%s\n", COLOR_RED, COLOR_DEFAULT);
                 }
+
                 memset(input_buffer, '\0', sizeof(input_buffer));
                 input_buffer_w = 0;
                 

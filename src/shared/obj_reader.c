@@ -10,6 +10,8 @@
 #include "connect_obj.h"
 #include "disconnect_obj.h"
 #include "message_obj.h"
+#include "ping_obj.h"
+#include "update_userinfo_obj.h"
 
 // Read a Bulb object from a socket. The object is dynamically allocated and thus
 // must be released from memory afterwards.
@@ -29,6 +31,10 @@ struct bulb_obj* bulb_obj_read(struct mt_socket* sock, char* error_msg, size_t l
     int read;
     while ((read = recv(sock->socket, buffer, sizeof(buffer), MSG_PEEK)) < (int)sizeof(struct bulb_obj))
     {
+        // If the socket is blocking, poll and then try again.
+        if (socket_errno() == SOCKET_AGAIN && mt_socket_poll(sock, false))
+            continue;
+
         // If read does not return a valid length, the connection has likely been closed.
         if (read <= 0)
             return NULL;
@@ -46,7 +52,7 @@ struct bulb_obj* bulb_obj_read(struct mt_socket* sock, char* error_msg, size_t l
 #ifdef CLIENT
             ASSERT(false, return NULL, "Test object was found in stream")
 #else
-            snprintf(error_msg, len, "Client attempted to send test object\n");
+            snprintf(error_msg, len, "Client attempted to send test object");
 #endif
             return NULL;
         case BULB_STDOUT:
@@ -54,7 +60,7 @@ struct bulb_obj* bulb_obj_read(struct mt_socket* sock, char* error_msg, size_t l
             // Because this object is of variable length and incorporates zero character 
             // filtering, this object must NOT be sent by client code as it is inherently 
             // dangerous.
-            snprintf(error_msg, len, "Client attempted to send stdout_obj\n");
+            snprintf(error_msg, len, "Client attempted to send stdout_obj");
             return NULL;
 #endif
 
@@ -69,11 +75,15 @@ struct bulb_obj* bulb_obj_read(struct mt_socket* sock, char* error_msg, size_t l
             return disconnect_obj_read(sock, header, sizeof(struct disconnect_obj));
         case BULB_MESSAGE:
             return message_obj_read(sock, header, sizeof(struct message_obj));
+        case BULB_PING:
+            return ping_obj_read(sock, header, sizeof(struct ping_obj));
+        case BULB_UPDATE_USERINFO:
+            return update_userinfo_obj_read(sock, header, sizeof(struct update_userinfo_obj));
         default:
 #ifdef CLIENT
             ASSERT(false, return NULL, "Invalid obj type %d\n", header->type);
 #else
-            snprintf(error_msg, len, "Client attempted to send invalid obj type %d\n", header->type);
+            snprintf(error_msg, len, "Client attempted to send invalid obj type %d", header->type);
 #endif
             return NULL;
     }

@@ -13,6 +13,8 @@
 #include "connect_obj.h"
 #include "disconnect_obj.h"
 #include "message_obj.h"
+#include "ping_obj.h"
+#include "update_userinfo_obj.h"
 
 // Process a Bulb object. The object may be free()'d afterwards. Returns false on error.
 bool bulb_process_object(struct bulb_obj* obj, struct server_node* server, struct client_node* client)
@@ -35,6 +37,12 @@ bool bulb_process_object(struct bulb_obj* obj, struct server_node* server, struc
             return true;
         case BULB_MESSAGE:
             message_obj_process((struct message_obj*)obj, server, client);
+            return true;
+        case BULB_PING:
+            ping_obj_process((struct ping_obj*)obj, server, client);
+            return true;
+        case BULB_UPDATE_USERINFO:
+            update_userinfo_obj_process((struct update_userinfo_obj*)obj, server, client);
             return true;
         default:
             return false;

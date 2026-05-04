@@ -17,6 +17,7 @@
 struct disconnect_obj
 {
     struct bulb_obj base;
+    bool server_shutdown;
     char name[MAX_NAME_LENGTH + 1]; // Names are unique, so this is used as a client identifier.
 };
 
@@ -24,7 +25,7 @@ struct disconnect_obj
 struct bulb_obj* disconnect_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size);
 
 // Write a disconnect_obj object. Returns false on failure.
-bool disconnect_obj_write(struct mt_socket* sock, const char* name);
+bool disconnect_obj_write(struct mt_socket* sock, const char* name, bool server_shutdown);
 
 // Process a disconnect_obj object.
 void disconnect_obj_process(struct disconnect_obj* obj, 

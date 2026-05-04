@@ -45,7 +45,7 @@ void message_obj_process(struct message_obj* obj, struct server_node* server, st
     // Verify the client's message before processing it.
     if (!str_isprint(obj->message))
     {
-        server_kick(server, client, "Message communication must utilise displayable characters!\n");
+        server_kick(server, client, "Message communication must utilise displayable characters!");
         goto finish;
     }
 

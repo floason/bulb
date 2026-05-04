@@ -18,9 +18,9 @@
     static WSADATA wsa_data;
 #endif
 
-// A thread is created for this function once a client instance connects
-// to a server successfully.
-static int _client_thread(void* c)
+// Start reading and processing message objects in a new thread for the given client
+// connection.
+static int server_client_recv_thread(void* c)
 {
     struct client_node* client = (struct client_node*)c;
     struct server_node* server = client->server_node;
@@ -30,19 +30,18 @@ static int _client_thread(void* c)
         char error_msg[MAX_ERROR_LENGTH + 1] = { 0 };
         struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, error_msg, sizeof(error_msg));
         if (obj == NULL)
-        {
-            if (!client->bulb_client->disconnect_handled)
-                client_throw_critical_error(client->bulb_client, CLIENT_FORCE_DISCONNECT, NULL);
-            return 0;
-        }
-
-        ASSERT(bulb_process_object(obj, server, client), return 0,
+            goto flagged_for_deletion;
+        
+        ASSERT(bulb_process_object(obj, server, client), goto flagged_for_deletion,
             "Failed to process Bulb object of type %d\n", obj->type);
 
         // Periodically deallocate clients marked for deletion.
         server_free_flagged_clients(server);
     }
 
+flagged_for_deletion:
+    client_set_status(client, CLIENT_READY_TO_DELETE);
+    cnd_signal(&client->mt_sock.send_signal);
     return 0;
 }
 
@@ -79,6 +78,7 @@ struct bulb_client* client_init(const char* host,
     // Set up the local client node and instantiate its socket for server communication.
     client->local_node = localclient = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
     client->local_node->bulb_client = client;
+    client_shared_node_init(client->local_node);
     SOCKET sock = socket(client->addr_ptr->ai_family, client->addr_ptr->ai_socktype,
         client->addr_ptr->ai_protocol);
     if (sock == INVALID_SOCKET)
@@ -154,11 +154,13 @@ bool client_connect(struct bulb_client* client)
         client->error_state = CLIENT_SOCKET_FAIL;
         return false; 
     }
+    mt_socket_set_non_blocking(&client->local_node->mt_sock);
     freeaddrinfo(client->addr_ptr);
     client->addr_ptr = NULL;
     client->is_connected = true;
 
-    thrd_create(&client->local_node->recv_thread, _client_thread, client->local_node);
+    SPAWN_CLIENT_THREAD(client->local_node, recv_thread);
+    SPAWN_CLIENT_THREAD(client->local_node, send_thread);
     return true;
 }
 
@@ -182,6 +184,7 @@ bool client_authenticate(struct bulb_client* client, struct bulb_userinfo* useri
     obj.info.major = MAJOR;
     obj.info.minor = MINOR;
     obj.info.patch = PATCH;
+    client->local_node->mt_sock.timeout_duration = userinfo->timeout_s;
     if (!userinfo_obj_write(&client->local_node->mt_sock, &obj))
     { 
         client->error_state = CLIENT_AUTH_FAIL;
@@ -202,9 +205,19 @@ bool client_ready(struct bulb_client* client)
     return client->local_node->status == CLIENT_VALIDATED;
 }
 
+// Is the client disconnecting? The connection may not have been completely
+// severed at this point.
+bool client_disconnecting(struct bulb_client* client)
+{
+    ASSERT(client, return false);
+    return client_flagged_for_deletion(client->local_node);
+}
+
 // Process client input. Returns true if a command was detected, otherwise false.
 bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success)
 {
+    ASSERT(client, return false);
+
     // Check if the first non-whitespace character of the message is a slash.
     for (int i = 0, len = strlen(msg); i < len; i++)
     {

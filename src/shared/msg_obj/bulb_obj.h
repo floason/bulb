@@ -20,7 +20,9 @@ enum bulb_obj_type
     BULB_USERINFO,
     BULB_CONNECT,
     BULB_DISCONNECT,
-    BULB_MESSAGE
+    BULB_MESSAGE,
+    BULB_PING,
+    BULB_UPDATE_USERINFO
 };
 
 struct bulb_obj

@@ -4,7 +4,7 @@ add_library(bulb_util INTERFACE)
 
 # Translation units to propagate must be explicitly defined using target_sources
 # to prevent linking errors!
-target_sources(bulb_util PUBLIC trie.c util.c console_io.c)
+target_sources(bulb_util PUBLIC trie.c util.c console_io.c unisock.c)
 
 # Building the CLI which links both the server and client Bulb library targets
 # requires that they are both compiled as shared libraries. As both libraries

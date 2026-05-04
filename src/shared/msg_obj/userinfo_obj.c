@@ -32,6 +32,14 @@ bool userinfo_obj_write(struct mt_socket* sock, struct userinfo_obj* obj)
 void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, struct client_node* client)
 {
 #ifdef SERVER
+    // If the client is already authenticated, kick it.
+    if (client->userinfo != NULL)
+    {
+        server_kick(server, client, "Attempted to re-authenticate by sending duplicate userinfo_obj node");
+        tagged_free(obj, TAG_BULB_OBJ);
+        return;
+    }
+
     // Reject clients with empty usernames.
     if (strlen(obj->info.name) == 0)
     {
@@ -89,6 +97,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
 
     // Validate the client and log its entry.
     client->userinfo = obj;
+    client->ready_to_ping = true;
     client_set_status(client, CLIENT_VALIDATED);
     server_connect_client(server, client);
     LOOP_CLIENTS(server, NULL, node,
@@ -117,7 +126,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     return;
 
 kick_client:
-    server_disconnect_client(server, client, false, true);
+    server_disconnect_client(server, client, false, true, false);
     return;
 #else
     memcpy(&server->info, &obj->info, sizeof(server->info));

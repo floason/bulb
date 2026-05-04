@@ -1,9 +1,15 @@
 // floason (C) 2026
 // Licensed under the MIT License.
 
+#include <stdlib.h>
 #include <stdint.h>
+#include <time.h>
 
 #include "util.h"
+
+#if defined WIN32
+#   include "windows.h"
+#endif
 
 #define TAGGED_MAGIC    0xC3DA4DF1
 
@@ -47,4 +53,41 @@ void tagged_free(void* ptr, int tag)
     LINKED_LIST_REMOVE(chunk, tagged_head, tagged_tail);
     chunk->magic = TAG_FIRST;
     free(chunk);
+}
+
+void sleeps(unsigned seconds)
+{
+#if defined __UNIX__
+    sleep(seconds);
+#elif defined WIN32
+    Sleep(seconds * 1000);
+#else
+    ASSERT(false, return, "sleeps() not supported by target platform");
+#endif
+}
+
+bool timespec_ns_get(struct timespec* timespec)
+{
+    ASSERT(timespec != NULL, return false);
+
+#if defined WIN32
+    static LARGE_INTEGER frequency = { 0 };
+    if (frequency.QuadPart == 0)
+    {
+        ASSERT(QueryPerformanceFrequency(&frequency), return false, 
+            "QueryPerformanceFrequency() failed: %d\n", GetLastError());
+    }
+
+    LARGE_INTEGER count;
+    ASSERT(QueryPerformanceCounter(&count), return false, "QueryPerformanceCounter() failed: %d\n",
+        GetLastError());
+    timespec->tv_sec = count.QuadPart / frequency.QuadPart;
+    timespec->tv_nsec = ((count.QuadPart * NANOSECONDS) / frequency.QuadPart) % NANOSECONDS;
+    return true;
+#elif defined UNIX  
+    clock_gettime(CLOCK_MONOTONIC, &timespec);
+    return true;
+#endif
+
+    ASSERT(false, return false, "Target platform not supported by timespec_ns_get() function");
 }

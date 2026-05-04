@@ -1,6 +1,19 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
+/*
+ * Object reading/processing is due for an overall re-write.
+ *
+ * While the original model was efficient for basic asynchronous object retrieval
+ * and sending, it has since grown organically and now requires the use of polling
+ * so as to determine the current socket state. This model is not efficient if
+ * multiple threads are polling on the exact same socket. I have not yet actually
+ * decided to re-write the entire model to use a single event polling thread per
+ * client socket connection, as I have other features to introduce first.
+ *
+ * Except this re-write to take place before v1.
+*/
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
@@ -25,10 +38,16 @@ struct bulb_obj* bulb_obj_template_recv(struct mt_socket* sock, struct bulb_obj*
     size_t offset = 0;
     do
     {
-        int read = recv(sock->socket, (char*)obj + offset, 
-            MIN(header->size - offset, RECV_BUFFER_SIZE), 0);
-        if (read == SOCKET_ERROR)
+        int read; 
+        while ((read = recv(sock->socket, (char*)obj + offset, 
+            MIN(header->size - offset, RECV_BUFFER_SIZE), 0)) == SOCKET_ERROR)
+        {
+            // If the socket is blocking, poll and then try again.
+            if (socket_errno() == SOCKET_AGAIN && mt_socket_poll(sock, false))
+                continue;
+            tagged_free(obj, TAG_BULB_OBJ);
             return NULL;
+        }
         offset += read;
     } while (header->size > offset);
 
@@ -45,19 +64,9 @@ bool bulb_obj_write(struct mt_socket* sock, struct bulb_obj* obj)
     // function.
     mtx_lock(&sock->write_lock);
 
-    bool return_value = false;
     size_t remaining = obj->size;
     do
     {
-#ifdef CLIENT
-        // The entire local client thread in client code is synchronous at the moment, although
-        // this model may be re-evaluated in the future.
-        int written = send(sock->socket, (const char*)obj + (obj->size - remaining), 
-            MIN(remaining, RECV_BUFFER_SIZE), MSG_NOSIGNAL);
-        if (written == SOCKET_ERROR)
-            goto finish;
-        remaining -= written;
-#else
         size_t written = MIN(remaining, RECV_BUFFER_SIZE);
         struct mt_socket_write_node* node = (struct mt_socket_write_node*)tagged_malloc(
             sizeof(struct mt_socket_write_node) + written, TAG_TEMP);
@@ -66,15 +75,9 @@ bool bulb_obj_write(struct mt_socket* sock, struct bulb_obj* obj)
 
         QUEUE_ENQUEUE(node, sock->send_queue, sock->send_queue_tail);
         remaining -= written;
-#endif
     } while (remaining > 0);
     
-#ifdef SERVER
     cnd_signal(&sock->send_signal);
-#endif
-    return_value = true;
-
-finish:
     mtx_unlock(&sock->write_lock);
-    return return_value;
+    return true;
 }

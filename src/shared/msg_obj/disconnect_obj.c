@@ -8,6 +8,8 @@
 #include <string.h>
 
 #include "unisock.h"
+#include "server_node.h"
+#include "client_node.h"
 #include "disconnect_obj.h"
 #include "bulb_obj.h"
 #include "userinfo_obj.h"
@@ -23,11 +25,12 @@ struct bulb_obj* disconnect_obj_read(struct mt_socket* sock, struct bulb_obj* he
 }
 
 // Write a disconnect_obj object. Returns false on failure.
-bool disconnect_obj_write(struct mt_socket* sock, const char* name)
+bool disconnect_obj_write(struct mt_socket* sock, const char* name, bool server_shutdown)
 {
     struct disconnect_obj obj = { };
     obj.base.type = BULB_DISCONNECT;
     obj.base.size = sizeof(struct disconnect_obj);
+    obj.server_shutdown = server_shutdown;
     strncpy(obj.name, name, sizeof(obj.name));
     return bulb_obj_write(sock, (struct bulb_obj*)&obj);
 }
@@ -38,17 +41,17 @@ void disconnect_obj_process(struct disconnect_obj* obj,
                             struct client_node* client)
 {
 #ifdef CLIENT
-    LOOP_CLIENTS(server, NULL, node,
+    if (strlen(obj->name) == 0)
+        server_disconnect_client(server, client, false, true, obj->server_shutdown);
+    else
     {
-        if (strcmp(obj->name, node->userinfo->info.name) == 0)
-        {
-            if (node == client)
-                client_throw_exception(client->bulb_client, CLIENT_DISCONNECT, NULL);
-            else
-                server_disconnect_client(server, node, true, true);
-            break;
-        }
-    })
+        struct client_node* node = server_find_by_name(server, obj->name);
+        ASSERT(node != NULL, goto not_found, "Could not find node by name \"%s!\"\n", obj->name);
+        ASSERT(node != client, goto not_found, 
+            "Server object sent disconnect object using localclient name\n");
+        server_disconnect_client(server, node, true, true, obj->server_shutdown);
+    }
 #endif
+not_found:
     tagged_free(obj, TAG_BULB_OBJ);
 }

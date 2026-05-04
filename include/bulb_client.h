@@ -90,6 +90,10 @@ BULB_API bool client_authenticate(struct bulb_client* client, struct bulb_userin
 // Is the client ready for communication?
 BULB_API bool client_ready(struct bulb_client* client);
 
+// Is the client disconnecting? The connection may not have been completely
+// severed at this point.
+BULB_API bool client_disconnecting(struct bulb_client* client);
+
 // Process client input. Returns true if a command was detected, otherwise false.
 BULB_API bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success);
 

@@ -58,12 +58,12 @@ struct server_node* server_shared_node_alloc();
 // Connect a new client to a server node's clients list.
 void server_connect_client(struct server_node* server, struct client_node* client);
 
-// Disconnect a client from a server node's clients list. This will free the client
-// node from memory.
+// Start disconnecting a client from a server node's clients list.
 void server_disconnect_client(struct server_node* server, 
                               struct client_node* client, 
                               bool print_msg, 
-                              bool unlink);
+                              bool unlink,
+                              bool server_shutdown);
 
 // Check if a client is connected without iterating through the entire list of clients.
 // Returns the client node if found, othewrise NULL.
