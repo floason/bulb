@@ -61,6 +61,7 @@ struct server_node* server_shared_node_alloc()
     mtx_init(&server->server_emptied_mutex, mtx_plain);
     cnd_init(&server->server_emptied_signal);
     server->clients = trie_new();
+    server->clients_info_head = server->clients_info_tail = &server->info;
     return server;
 }
 
@@ -69,6 +70,7 @@ void server_connect_client(struct server_node* server, struct client_node* clien
 {
     // The client node should already have its socket and userinfo configured.
 
+    LINKED_LIST_ADD((&client->userinfo->info), server->clients_info_head, server->clients_info_tail);
     trie_add(server->clients, client->userinfo->info.name, client);
     server->number_connected++;
 
@@ -86,14 +88,12 @@ void server_disconnect_client(struct server_node* server,
     // If the client did not fail server authentication checks, log whether it disconnected 
     // or if the client attempted to connect but a connection could not be established to 
     // begin with.
-    char ip_str[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
     if (print_msg)
     {
         if (client->userinfo != NULL)
         {
             server_printf(server, "Client \"%s\" (%s) has disconnected\n", client->userinfo->info.name, 
-                ip_str);
+                client->userinfo->info.ip_addr);
 
             // The server reports this to clients, rather than simply printing this on each
             // client, so that I don't have to re-implement the same code used with stdout_obj
@@ -104,7 +104,8 @@ void server_disconnect_client(struct server_node* server,
             LOOP_CLIENTS(server, client, node, stdout_obj_write(&node->mt_sock, buffer));
         }
         else
-            server_printf(server, "Client from address %s failed to connect\n", ip_str);
+            server_printf(server, "Client from address %s failed to connect\n", 
+                client->userinfo->info.ip_addr);
     }
 
     // Synchronise the client's departure with all other clients.
@@ -123,6 +124,8 @@ void server_disconnect_client(struct server_node* server,
     {
         if (client->userinfo)
             trie_delete(server->clients, client->userinfo->info.name);
+        LINKED_LIST_REMOVE((&client->userinfo->info), server->clients_info_head, 
+            server->clients_info_tail);
         LINKED_LIST_ADD(client, server->flagged_clients_list, server->flagged_clients_list_tail);
     }
 
@@ -148,10 +151,8 @@ void server_kick(struct server_node* server, struct client_node* client, const c
 {
 #ifdef SERVER
     // Log the client's departure in the server console and to the client itself.
-    char ip_str[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
     server_printf(server, "Client \"%s\" (%s) has been kicked from the server: %s\n", 
-        client->userinfo->info.name, ip_str, msg);
+        client->userinfo->info.name, client->userinfo->info.ip_addr, msg);
     stdout_obj_write(&client->mt_sock, msg);
     
     // Write to all other clients that this user has been kicked.

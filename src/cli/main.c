@@ -41,11 +41,10 @@
 
 #define CLI_SERVER_ONLY(CMD)                                                                        \
     {                                                                                               \
-        if (!is_server)                                                                             \
+        if (!userinfo.is_server)                                                                    \
             CLI_PRINT_CMD_ERROR(cmd, "Server mode must be toggled")                                 \
     }
 
-static bool is_server = false;
 static const char* custom_host = NULL;
 static uint16_t port = BULB_USE_DEFAULT_PORT;
 
@@ -143,7 +142,7 @@ static bool _cli_cmd_disable_input(struct cli_cmd* cmd, const char* argument)
 
 static bool _cli_cmd_server(struct cli_cmd* cmd, const char* argument)
 {
-    is_server = true;
+    userinfo.is_server = true;
     return true;
 }
 
@@ -157,8 +156,6 @@ static bool _cli_cmd_server_shutdown_timeout(struct cli_cmd* cmd, const char* ar
 int main(int argc, char** argv)
 {
     int return_value = 0;
-    struct bulb_client* client = NULL;
-    struct bulb_server* server = NULL;
 
     mtx_init(&print_message_lock, mtx_plain | mtx_recursive);
     strcpy(userinfo.description, "using Bulb CLI");
@@ -216,9 +213,9 @@ int main(int argc, char** argv)
 
     enable_ansi_sequences();
     printf_clear_screen();
-    bulb_userinfo_defaults(&userinfo, is_server);
+    bulb_userinfo_defaults(&userinfo);
 
-    if (is_server)
+    if (userinfo.is_server)
     {
         // Running as a server.
         printf("[SERVER] ");
@@ -283,7 +280,7 @@ new_iteration:
 
                 bool cmd_success, func_success;
                 waiting_for_input = false;
-                if (is_server)
+                if (userinfo.is_server)
                     func_success = server_input(server, input_buffer, &cmd_success);
                 else
                     func_success = client_input(client, input_buffer, &cmd_success);
@@ -346,7 +343,7 @@ new_iteration:
 fail:
     return_value = 1;
 finish:
-    if (is_server)
+    if (userinfo.is_server)
         cli_server_cleanup(server);
     else
         cli_client_cleanup(client);

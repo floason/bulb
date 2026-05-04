@@ -59,6 +59,11 @@ static bool _cli_server_exception_handler(struct bulb_server* server,
             print_message((const char*)data);
             return true;
 
+        // Evaluate the status command.
+        case SERVER_STATUS_CMD:
+            evaluate_status_cmd((struct bulb_userinfo*)data);
+            return true;
+
         default:
             return !fatal;
     }

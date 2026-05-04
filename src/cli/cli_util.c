@@ -5,8 +5,12 @@
 #include <threads.h>
 
 #include "trie.h"
+#include "util.h"
+#include "bulb_version.h"
 #include "bulb_macros.h"
 #include "bulb_structs.h"
+#include "bulb_client.h"
+#include "bulb_server.h"
 
 #include "cli_util.h"
 
@@ -23,6 +27,9 @@ atomic_bool print_message_lock_busy;
 
 struct trie* cli_cmds = NULL;
 struct bulb_userinfo userinfo = { 0 };
+
+struct bulb_client* client = NULL;
+struct bulb_server* server = NULL;
 
 void clear_input_buffer_on_screen()
 {
@@ -41,7 +48,7 @@ void clear_input_buffer_on_screen()
 
 void print_message(const char* message)
 {   
-    // Use mutex locking here to ensure that messages are outputted synchronously.
+    // Use mutex locking to ensure that messages are outputted synchronously.
     atomic_store(&print_message_lock_busy, true);
     mtx_lock(&print_message_lock);
     
@@ -76,4 +83,30 @@ void print_message(const char* message)
 finish:
     mtx_unlock(&print_message_lock);
     atomic_store(&print_message_lock_busy, false);
+}
+
+void evaluate_status_cmd(struct bulb_userinfo* info)
+{
+    // Use mutex locking to ensure that messages are outputted synchronously.
+    mtx_lock(&print_message_lock);
+
+    // Print server information.
+    bulb_printver();
+    printf("server \"%s\": \"%s\"\n", info->name, info->description);
+    if (userinfo.is_server)
+        printf("no. connected: %d\n", server_num_connected(server));
+    else
+        printf("no. connected: %d\n", client_num_connected(client));
+
+    // Walk through each client and print their information.
+    while (info->next != NULL)
+    {
+        info = info->next;
+        printf("- \"%s\"", info->name);
+        if (userinfo.is_server)
+            printf(" (%s)", info->ip_addr);
+        printf("\n   - desc \"%s\"\n   - ping %ums\n", info->description, info->ping_ms);
+    }
+
+    mtx_unlock(&print_message_lock);
 }

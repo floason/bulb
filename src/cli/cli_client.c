@@ -48,6 +48,11 @@ static bool _client_exception_handler(struct bulb_client* client,
         case CLIENT_PRINT_STDOUT:
             print_message((const char*)data);
             return true;
+
+        // Evaluate the status command.
+        case CLIENT_STATUS_CMD:
+            evaluate_status_cmd((struct bulb_userinfo*)data);
+            return true;
         
         default:
             return !fatal;

@@ -26,6 +26,7 @@ enum server_error_state
     SERVER_CLIENT_ACCEPT_FAIL,
     SERVER_PRINT_STDOUT,        // data is const char*
     SERVER_RECEIVED_MESSAGE,    // data is bulb_message*
+    SERVER_STATUS_CMD,          // data is bulb_userinfo* (first instance is server, rest are clients)
 
     // Server exit that results in the server thread being ended.
     SERVER_FINISH,
@@ -83,6 +84,9 @@ BULB_API void server_set_userinfo(struct bulb_server* server, struct bulb_userin
 
 // Start accepting new clients asynchronously. Returns false on error.
 BULB_API bool server_listen(struct bulb_server* server);
+
+// Get the number of connected clients on the server. Returns -1 on failure.
+BULB_API int server_num_connected(struct bulb_server* server);
 
 // Process server input. Returns true if a command was detected, otherwise false.
 BULB_API bool server_input(struct bulb_server* server, const char* msg, bool* cmd_success);

@@ -45,6 +45,10 @@ struct server_node
     // Dictionary of actual connected clients.
     struct trie* clients;
 
+    // List of clients' userinfo objects.
+    struct bulb_userinfo* clients_info_head;
+    struct bulb_userinfo* clients_info_tail;
+
     // List of clients flagged for deletion.
     struct client_node* flagged_clients_list;
     struct client_node* flagged_clients_list_tail;

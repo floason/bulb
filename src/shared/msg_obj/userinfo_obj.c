@@ -55,8 +55,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     }
 
     // Get the connecting IP address.
-    char ip_str[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &client->addr.sin_addr, ip_str, sizeof(ip_str));
+    inet_ntop(AF_INET, &client->addr.sin_addr, obj->info.ip_addr, sizeof(obj->info.ip_addr));
 
     // Reject the client if its version does not match that of the server.
     if (obj->info.major != MAJOR || obj->info.minor != MINOR || obj->info.patch != PATCH)
@@ -71,8 +70,8 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         // Report the invalid version of the connecting client to the server 
         // console.
         server_printf(server, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d (server " \
-            "expects version %d.%d.%d)\n", obj->info.name, ip_str, obj->info.major, obj->info.minor, 
-            obj->info.patch, MAJOR, MINOR, PATCH);
+            "expects version %d.%d.%d)\n", obj->info.name, obj->info.ip_addr, obj->info.major, 
+            obj->info.minor, obj->info.patch, MAJOR, MINOR, PATCH);
 
         goto kick_client;
     }
@@ -86,7 +85,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
             stdout_obj_write(&client->mt_sock, 
                 "Sorry, another client is already connected with that name!\n");
             server_printf(server, "Client \"%s\" (%s) failed to connect as the given username is "      \
-                "already occupied\n", obj->info.name, ip_str);
+                "already occupied\n", obj->info.name, obj->info.ip_addr);
             
             client_kicked = true;
             break;
@@ -107,7 +106,8 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         stdout_obj_write(&node->mt_sock, buffer);
     });
     connect_obj_write(&client->mt_sock, NULL, true);
-    server_printf(server, "Client \"%s\" (%s) has connected\n", client->userinfo->info.name, ip_str);
+    server_printf(server, "Client \"%s\" (%s) has connected\n", client->userinfo->info.name, 
+        obj->info.ip_addr);
 
     // Send the server's userinfo node to the client.
     struct userinfo_obj server_obj;
@@ -129,6 +129,8 @@ kick_client:
     server_disconnect_client(server, client, false, true, false);
     return;
 #else
+    struct bulb_userinfo* next = server->info.next;
     memcpy(&server->info, &obj->info, sizeof(server->info));
+    server->info.next = next;
 #endif
 }

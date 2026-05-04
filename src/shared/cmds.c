@@ -26,21 +26,11 @@ static unsigned bulb_cmds_ref_count;
 // status: lists information about the Bulb protocol and server.
 bool _cmd_status(struct server_node* server, struct cmd_args* params)
 {
-    // TODO: re-write to not use printf
-    bulb_printver();
-    printf("server \"%s\": \"%s\"\n", server->info.name, server->info.description);
-    printf("no. connected: %d\n", server->number_connected);
-    LOOP_CLIENTS(server, NULL, node, 
-    {
-        printf("- \"%s\"", node->userinfo->info.name);
-#ifdef SERVER
-        char ip_str[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &node->addr.sin_addr, ip_str, sizeof(ip_str));
-        printf(" (%s)", ip_str);
+#ifdef CLIENT
+    client_throw_exception(localclient->bulb_client, CLIENT_STATUS_CMD, server->clients_info_head);
+#else
+    server_throw_exception(server->bulb_server, SERVER_STATUS_CMD, server->clients_info_head);
 #endif
-        printf("\n   - desc \"%s\"\n   - ping %ums\n", node->userinfo->info.description, 
-            node->userinfo->info.ping_ms);
-    });
     return true;
 }
 
@@ -94,7 +84,8 @@ bool bulb_parse_cmd_input(struct server_node* server, const char* buffer)
                 if (params == NULL)
                     next = params = (struct cmd_args*)tagged_malloc(sizeof(struct cmd_args), TAG_TEMP);
                 else
-                    next = params->next = (struct cmd_args*)tagged_malloc(sizeof(struct cmd_args), TAG_TEMP);
+                    next = params->next = (struct cmd_args*)tagged_malloc(sizeof(struct cmd_args), 
+                        TAG_TEMP);
                 params->argc++;
                 next->param = temp_buffer;
                 temp_buffer = (char*)tagged_malloc(temp_len, TAG_TEMP);

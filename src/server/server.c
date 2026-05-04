@@ -262,6 +262,14 @@ bool server_listen(struct bulb_server* server)
     return true;
 }
 
+// Get the number of connected clients on the server. Returns -1 on failure.
+BULB_API int server_num_connected(struct bulb_server* server)
+{
+    ASSERT(server, return -1);
+    ASSERT(server->server_node, return -1);
+    return server->server_node->number_connected;
+}
+
 // Process server input. Returns true if a command was detected, otherwise false.
 bool server_input(struct bulb_server* server, const char* msg, bool* cmd_success)
 {

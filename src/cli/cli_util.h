@@ -34,6 +34,9 @@ extern atomic_bool print_message_lock_busy;
 extern struct trie* cli_cmds;
 extern struct bulb_userinfo userinfo;
 
+extern struct bulb_client* client;
+extern struct bulb_server* server;
+
 static inline void cleanup()
 {
     if (cli_cmds != NULL)
@@ -44,3 +47,5 @@ static inline void cleanup()
 void clear_input_buffer_on_screen();
 
 void print_message(const char* message);
+
+void evaluate_status_cmd(struct bulb_userinfo* info);

@@ -24,6 +24,7 @@ enum client_error_state
     // Exceptions which do not disrupt the client instance.
     CLIENT_PRINT_STDOUT,        // data is const char*
     CLIENT_RECEIVED_MESSAGE,    // data is bulb_message*
+    CLIENT_STATUS_CMD,          // data is bulb_userinfo* (first instance is server, rest are clients)
 
     // Client disconnect that results in the client thread being ended.
     CLIENT_DISCONNECT, 
@@ -89,6 +90,9 @@ BULB_API bool client_authenticate(struct bulb_client* client, struct bulb_userin
 
 // Is the client ready for communication?
 BULB_API bool client_ready(struct bulb_client* client);
+
+// Get the number of connected clients on the server. Returns -1 on failure.
+BULB_API int client_num_connected(struct bulb_client* client);
 
 // Is the client disconnecting? The connection may not have been completely
 // severed at this point.

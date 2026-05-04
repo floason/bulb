@@ -205,6 +205,15 @@ bool client_ready(struct bulb_client* client)
     return client->local_node->status == CLIENT_VALIDATED;
 }
 
+// Get the number of connected clients on the server. Returns -1 on failure.
+BULB_API int client_num_connected(struct bulb_client* client)
+{
+    ASSERT(client, return -1);
+    ASSERT(client->local_node, return -1);
+    ASSERT(client->local_node->server_node, return -1);
+    return client->local_node->server_node->number_connected;
+}
+
 // Is the client disconnecting? The connection may not have been completely
 // severed at this point.
 bool client_disconnecting(struct bulb_client* client)
