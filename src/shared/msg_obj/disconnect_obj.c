@@ -27,10 +27,9 @@ struct bulb_obj* disconnect_obj_read(struct mt_socket* sock, struct bulb_obj* he
 // Write a disconnect_obj object. Returns false on failure.
 bool disconnect_obj_write(struct mt_socket* sock, const char* name, bool server_shutdown)
 {
-    struct disconnect_obj obj = { };
-    obj.base.type = BULB_DISCONNECT;
-    obj.base.size = sizeof(struct disconnect_obj);
-    obj.server_shutdown = server_shutdown;
+    struct disconnect_obj obj = { .base.type = BULB_DISCONNECT,
+                                  .base.size = sizeof(struct disconnect_obj),
+                                  .server_shutdown = server_shutdown };
     strncpy(obj.name, name, sizeof(obj.name));
     return bulb_obj_write(sock, (struct bulb_obj*)&obj);
 }

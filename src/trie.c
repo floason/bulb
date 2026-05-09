@@ -43,8 +43,8 @@ struct trie* trie_new()
     return (struct trie*)tagged_malloc(sizeof(struct trie), TAG_TRIE);
 }
 
-// Add a new entry to the trie. Returns the trie node if the key already 
-// exists, or NULL on failure.
+// Add a new entry to the trie. Returns NULL if the key already exists, or on 
+// failure.
 struct trie* trie_add(struct trie* trie, const char* key, void* value)
 {
     ASSERT(trie, return NULL);
@@ -87,7 +87,7 @@ finish:
 }
 
 // Add a new entry to the trie by copying its value instead of referencing it. 
-// Returns false if the key already exists, or on failure.
+// Returns NULL if the key already exists, or on failure.
 struct trie* trie_add_copy(struct trie* trie, const char* key, void* value, size_t size)
 {
     ASSERT(trie, return NULL);

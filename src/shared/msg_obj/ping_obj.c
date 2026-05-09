@@ -22,13 +22,9 @@ struct bulb_obj* ping_obj_read(struct mt_socket* sock, struct bulb_obj* header, 
 // Write a ping_obj object. Returns false on failure.
 bool ping_obj_write(struct mt_socket* sock, bool final_destination)
 {
-    return true;
-
-    struct ping_obj obj = { };
-    obj.base.type = BULB_PING;
-    obj.base.size = sizeof(struct ping_obj);
-    obj.final_destination = final_destination;
-
+    struct ping_obj obj = { .base.type = BULB_PING,
+                            .base.size = sizeof(struct ping_obj),
+                            .final_destination = final_destination };
     if (!final_destination)
         timespec_ns_get(&sock->ping_start);
 

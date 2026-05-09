@@ -62,7 +62,21 @@ void sleeps(unsigned seconds)
 #elif defined WIN32
     Sleep(seconds * 1000);
 #else
-    ASSERT(false, return, "sleeps() not supported by target platform");
+    ASSERT(false, return, "sleeps() not supported on target platform");
+#endif
+}
+
+void console_exit_handler(void* func)
+{
+#if defined WIN32
+    SetConsoleCtrlHandler(func, TRUE);
+#elif defined __UNIX__
+    struct sigaction action = { .sa_handler = func };
+    sigaction(SIGTERM, &action, NULL);
+    sigaction(SIGQUIT, &action, NULL);
+    sigaction(SIGINT, &action, NULL);
+#else
+    ASSERT(false, return, "console_exit_handler() not supported on target platform");
 #endif
 }
 
@@ -84,8 +98,8 @@ bool timespec_ns_get(struct timespec* timespec)
     timespec->tv_sec = count.QuadPart / frequency.QuadPart;
     timespec->tv_nsec = ((count.QuadPart * NANOSECONDS) / frequency.QuadPart) % NANOSECONDS;
     return true;
-#elif defined UNIX  
-    clock_gettime(CLOCK_MONOTONIC, &timespec);
+#elif defined __UNIX__  
+    clock_gettime(CLOCK_MONOTONIC, timespec);
     return true;
 #endif
 

@@ -12,6 +12,7 @@
 #include "unisock.h"
 #include "bulb_structs.h"
 #include "bulb_server.h"
+#include "bulb_banlist.h"
 #include "server_node.h"
 #include "client_node.h"
 #include "cmds.h"
@@ -19,7 +20,6 @@
 #include "obj_process.h"
 #include "message_obj.h"
 #include "stdout_obj.h"
-#include "userinfo_obj.h"
 #include "ping_obj.h"
 
 #ifdef WIN32
@@ -222,18 +222,54 @@ bool server_throw_exception(struct bulb_server* server,
     ASSERT(server, return false);
     ASSERT(server->exception_handler != NULL, return false, "Server exception handler is not set.\n");
 
-    // Invoke the exception handler. If it returns false, the server should shut down.
+    // Invoke the exception handler.
     bool result = server->exception_handler(server, error, false, data);
     server->error_state = error;
-    if (!result)
-        return false;
-    return true;
+    if (result)
+        return true;
+    
+    // If the exception was not handled, evaluate it further.
+    switch (error)
+    {
+        case SERVER_BAN_CLIENT:
+        {
+            // Default to using the Bulb flat-file banlist database.
+            struct bulb_ban* obj = (struct bulb_ban*)data;
+            result = server_banlist_addip(server, obj->ip_addr, obj->reason, &obj->is_banned);
+            if (!result)
+                return obj->is_banned;
+            return true;
+        }
+        case SERVER_UNBAN_CLIENT:
+        {
+            // Default to using the Bulb flat-file banlist database.
+            struct bulb_ban* obj = (struct bulb_ban*)data;
+            server_banlist_removeip(server, obj->ip_addr, &obj->is_banned);
+            return true;
+            
+        }
+        case SERVER_IS_CLIENT_BANNED:
+        {
+            // Read from the Bulb flat-file banlist database.
+            struct bulb_ban* obj = (struct bulb_ban*)data;
+            obj->is_banned = server_banlist_isbanned(server, obj->ip_addr, &obj->reason);
+            return true;
+        }
+        case SERVER_BANLIST_SAVE:
+            // Save to the Bulb flat-file banlist database.
+            return server_banlist_store(server);
+
+        default:
+            // There is no exception handler available for this exception.
+            // In this case, the exception should be elevated to a critical error.
+            return false;
+    }
 }
 
 // Start handling a critical error.
 void server_throw_critical_error(struct bulb_server* server, 
-                                        enum server_error_state error, 
-                                        void* data)
+                                 enum server_error_state error, 
+                                 void* data)
 {
     ASSERT(server, return);
     ASSERT(server->exception_handler != NULL, return, "Server exception handler is not set.\n");
@@ -254,6 +290,12 @@ bool server_listen(struct bulb_server* server)
 {
     ASSERT(server, return false);
     ASSERT(!server->is_listening, return false; );
+
+    if (server->server_node->info.init_bulb_banlist_database && !server_banlist_load(server))
+    {
+        server->error_state = SERVER_BANLIST_INIT_FAIL;
+        return false;
+    }
 
     int result = listen(server->listen_sock, SOMAXCONN);
     if (result == SOCKET_ERROR)
@@ -314,7 +356,7 @@ void server_shutdown(struct bulb_server* server, int timeout)
 
     LOOP_CLIENTS(server->server_node, NULL, node, 
     {
-        stdout_obj_write(&node->mt_sock, "\nThe server has been shut down.\n", STDOUT_SERVER_SHUTDOWN);
+        stdout_obj_write(&node->mt_sock, "The server has been shut down.\n", STDOUT_SERVER_SHUTDOWN);
         server_disconnect_client(server->server_node, node, true, false, true);
     });
 
@@ -341,19 +383,22 @@ void server_shutdown(struct bulb_server* server, int timeout)
 void server_free(struct bulb_server* server)
 {
     ASSERT(server, return);
+    
+    if (server->listen_sock != INVALID_SOCKET)
+    {
+        SOCKET sock = server->listen_sock;
+        server->listen_sock = INVALID_SOCKET;
+        shutdown(sock, SHUT_RDWR);
+        closesocket(sock);
+    }
+
+    server_disconnect_all_clients(server->server_node);
+    server_banlist_close(server);
+    tagged_free(server, TAG_BULB_SERVER);
+
+    bulb_cmds_cleanup();
 
 #ifdef WIN32
     WSACleanup();
 #endif
-
-    if (server->listen_sock != INVALID_SOCKET)
-    {
-        closesocket(server->listen_sock);
-        server->listen_sock = INVALID_SOCKET;
-    }
-
-    server_disconnect_all_clients(server->server_node);
-    tagged_free(server, TAG_BULB_SERVER);
-
-    bulb_cmds_cleanup();
 }

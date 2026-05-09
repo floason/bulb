@@ -68,6 +68,13 @@ static bool _cli_server_exception_handler(struct bulb_server* server,
             evaluate_status_cmd((struct bulb_userinfo*)data);
             return true;
 
+        // Use the default Bulb banlist.
+        case SERVER_BAN_CLIENT:
+        case SERVER_UNBAN_CLIENT:
+        case SERVER_IS_CLIENT_BANNED:
+        case SERVER_BANLIST_SAVE:
+            return false;
+
         default:
             return !fatal;
     }

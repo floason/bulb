@@ -9,7 +9,7 @@
 
 #define TRIE_DFS(ROOT, ID, SCOPE)                                               \
     {                                                                           \
-        struct trie* node##ID = ROOT->children;                                 \
+        struct trie* node##ID = ((struct trie*)ROOT)->children;                 \
         while (node##ID != NULL)                                                \
         {                                                                       \
             if (node##ID->value != NULL)                                        \
@@ -28,7 +28,7 @@
                     node##ID = node##ID->next;                                  \
             }                                                                   \
         }                                                                       \
-    }    
+    }
 
 struct trie
 {
@@ -45,12 +45,12 @@ struct trie
 // Create a new trie.
 struct trie* trie_new();
 
-// Add a new entry to the trie. Returns the trie node if the key already 
-// exists, or NULL on failure.
+// Add a new entry to the trie. Returns NULL if the key already exists, or on 
+// failure.
 struct trie* trie_add(struct trie* trie, const char* key, void* value);
 
 // Add a new entry to the trie by copying its value instead of referencing it. 
-// Returns the trie node if the key already exists, or NULL on failure.
+// Returns NULL if the key already exists, or on failure.
 struct trie* trie_add_copy(struct trie* trie, const char* key, void* value, size_t size);
 
 // Search for an entry in the trie. Returns NULL if the value is not found,

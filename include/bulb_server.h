@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <threads.h>
+#include <stdatomic.h>
 
 #include "bulb_macros.h"
 #include "bulb_structs.h"
@@ -13,6 +14,8 @@
 #   include "unisock.h"
 #   include "server_node.h"
 #endif
+
+// TODO: add function for getting list of userinfo objects
 
 struct bulb_server;
 
@@ -27,6 +30,10 @@ enum server_error_state
     SERVER_PRINT_STDOUT,        // data is bulb_stdout*
     SERVER_RECEIVED_MESSAGE,    // data is bulb_message*
     SERVER_STATUS_CMD,          // data is bulb_userinfo* (first instance is server, rest are clients)
+    SERVER_BAN_CLIENT,          // data is bulb_ban*, may update is_banned if address already banned
+    SERVER_UNBAN_CLIENT,        // data is bulb_ban*, may update is_banned if address was banned
+    SERVER_IS_CLIENT_BANNED,    // data is bulb_ban*, may update reason and is_banned
+    SERVER_BANLIST_SAVE,
 
     // Server exit that results in the server thread being ended.
     SERVER_FINISH,
@@ -35,6 +42,7 @@ enum server_error_state
     SERVER_WINSOCK_FAIL,        // Windows only.
     SERVER_ADDRESS_FAIL,
     SERVER_LISTEN_SOCKET_FAIL,
+    SERVER_BANLIST_INIT_FAIL,
 };
 
 // Return false to hint critical fault to the server.
@@ -50,6 +58,7 @@ struct bulb_server
     bool disconnect_handled;    // Should be toggled by the exception handler on 
                                 // SERVER_FINISH.
     enum server_error_state error_state;
+    void* banlist;
 
     // Errors raised outside server_init() will invoke this function. If false is returned
     // for a non-critical error, the server will terminate.

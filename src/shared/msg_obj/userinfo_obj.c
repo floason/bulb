@@ -12,10 +12,15 @@
 
 #include "unisock.h"
 #include "bulb_version.h"
+#include "bulb_structs.h"
 #include "shared_interface.h"
 #include "stdout_obj.h"
 #include "userinfo_obj.h"
 #include "connect_obj.h"
+
+#ifdef SERVER
+#   include "bulb_server.h"
+#endif
 
 // Read a userinfo_obj object. Returns NULL on failure.
 struct bulb_obj* userinfo_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size)
@@ -56,20 +61,49 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         goto kick_client;
     }
 
-    // Reject the client if its version does not match that of the server.
+    // Reject the client if it has been banned from the server.
+    struct bulb_ban ban_obj = { .ip_addr = obj->info.ip_addr, .reason = "" };
     memcpy(obj->info.ip_addr, client->ip_addr, sizeof(obj->info.ip_addr));
+    server_throw_exception(server->bulb_server, SERVER_IS_CLIENT_BANNED, (void*)&ban_obj);
+    if (ban_obj.is_banned)
+    {
+        // Attempt to inform the client that they are banned.
+        char buffer[1024 + MAX_NAME_LENGTH];
+        snprintf(buffer, sizeof(buffer), "You have been banned from the server%s%s\n",
+            (strlen(ban_obj.reason) > 0 ? ": " : "."), ban_obj.reason);
+        stdout_obj_write(&client->mt_sock, buffer, STDOUT_BAN_MSG);
+
+        // Report the client's ban to the server console.
+        bulb_printf(server, "Client \"%s\" (%s) failed to connect due to being banned from the server"  \
+            "%s%s\n", obj->info.name, obj->info.ip_addr, (strlen(ban_obj.reason) > 0 ? ": " : "."), 
+            ban_obj.reason);
+        
+        // If toggled, print the client's ban message to all connected clients.
+        if (server->info.print_ban_message_to_all)
+        {
+            snprintf(buffer, sizeof(buffer), "Client \"%s\" failed to connect due to being banned from" \
+                " the server%s%s\n", obj->info.name, (strlen(ban_obj.reason) > 0 ? ": " : "."), 
+                ban_obj.reason);
+            LOOP_CLIENTS(server, client, node, 
+                stdout_obj_write(&node->mt_sock, buffer, STDOUT_GENERIC));
+        }
+
+        goto kick_client;
+    }
+
+    // Reject the client if its version does not match that of the server.
     if (obj->info.major != MAJOR || obj->info.minor != MINOR || obj->info.patch != PATCH)
     {
         // Attempt to inform the client that its version number is incorrect.
         char client_buffer[256];
-        snprintf(client_buffer, sizeof(client_buffer), "Your client version is %d.%d.%d, however the "   \
+        snprintf(client_buffer, sizeof(client_buffer), "Your client version is %d.%d.%d, however the "  \
             "server expects a client version of %d.%d.%d!\n", obj->info.major, obj->info.minor, 
             obj->info.patch, MAJOR, MINOR, PATCH);
         stdout_obj_write(&client->mt_sock, client_buffer, STDOUT_KICK_MSG);
 
         // Report the invalid version of the connecting client to the server 
         // console.
-        bulb_printf(server, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d (server " \
+        bulb_printf(server, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d (server "  \
             "expects version %d.%d.%d)\n", obj->info.name, obj->info.ip_addr, obj->info.major, 
             obj->info.minor, obj->info.patch, MAJOR, MINOR, PATCH);
 
@@ -126,7 +160,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     return;
 
 kick_client:
-    server_disconnect_client(server, client, false, true, false);
+    server_disconnect_client(server, client, false, true, true);
     return;
 #else
     struct bulb_userinfo* next = server->info.next;

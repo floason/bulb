@@ -9,17 +9,26 @@
 
 #define MAX_CMD_NAME_LENGTH 32
 
+struct bulb_cmd;
+struct cmd_args;
+
+typedef bool (*bulb_cmd_func)(struct bulb_cmd* cmd, struct server_node* server, struct cmd_args* params);
+
 struct cmd_args
 {
     int argc;
     char** argv;
 };
 
-typedef bool (*bulb_cmd_func)(struct server_node* server, struct cmd_args* params);
+struct bulb_cmd
+{
+    const char* desc;
+    bulb_cmd_func func;
+};
 
 // Register a new command. Returns true upon successful registration, otherwise 
 // false.
-bool bulb_register_cmd(const char* name, bulb_cmd_func func);
+bool bulb_register_cmd(const char* name, const char* desc, bulb_cmd_func func);
 
 // Parse a command prompt and invoke the appropriate command. Returns false if
 // the command was not found.

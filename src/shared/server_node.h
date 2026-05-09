@@ -81,6 +81,14 @@ void server_loop_clients(struct server_node* server, struct client_node* except,
 // called only from object code too.
 void server_kick(struct server_node* server, struct client_node* client, const char* msg);
 
+// Ban a client. As the client is not always assumed to be in the server, an immediate kick 
+// should be invoked separately. This should be called from server code only. Returns false
+// if the client was already banned.
+bool server_ban(struct server_node* server, const char* ip_addr, const char* reason);
+
+// Unbans an address. Returns false if the address was not in the ban database.
+bool server_unban(struct server_node* server, const char* ip_addr);
+
 // Disconnect a client that is flagged for deletion.
 void server_free_flagged_client(struct server_node* server, struct client_node* client);
 

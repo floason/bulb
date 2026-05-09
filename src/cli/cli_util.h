@@ -6,6 +6,7 @@
 #include <stdatomic.h>
 #include <threads.h>
 
+#include "unisock.h"
 #include "trie.h"
 #include "bulb_macros.h"
 #include "bulb_structs.h"

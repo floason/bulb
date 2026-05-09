@@ -66,7 +66,7 @@ static void _cli_add_cmd(const char* name, const char* desc, cli_cmd_func func, 
 {
     trie_add_copy(cli_cmds, 
                   name, 
-                  (void*)&((struct cli_cmd){ func, name, desc, arg_name }), 
+                  &((struct cli_cmd){ func, name, desc, arg_name }), 
                   sizeof(struct cli_cmd));
     max_cmd_len = MAX(max_cmd_len, strlen(name) + ((arg_name != NULL) ? (strlen(arg_name) + 1) : 0));
 }
@@ -153,9 +153,18 @@ static bool _cli_cmd_server_shutdown_timeout(struct cli_cmd* cmd, const char* ar
     return true;
 }
 
+CREATE_CONSOLE_EXIT_FUNCTION(_cli_exit,
+{
+    if (userinfo.is_server)
+        cli_server_cleanup(server);
+    else
+        cli_client_cleanup(client);
+})
+
 int main(int argc, char** argv)
 {
     int return_value = 0;
+    console_exit_handler(_cli_exit);
 
     mtx_init(&print_message_lock, mtx_plain | mtx_recursive);
     strcpy(userinfo.description, "using Bulb CLI");
@@ -343,9 +352,6 @@ new_iteration:
 fail:
     return_value = 1;
 finish:
-    if (userinfo.is_server)
-        cli_server_cleanup(server);
-    else
-        cli_client_cleanup(client);
+    CALL_CONSOLE_EXIT_FUNCTION(_cli_exit);
     return return_value;
 }

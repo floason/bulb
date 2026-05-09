@@ -33,5 +33,6 @@ enum stdout_type
 {
     STDOUT_GENERIC,
     STDOUT_KICK_MSG,
+    STDOUT_BAN_MSG,
     STDOUT_SERVER_SHUTDOWN
 };

@@ -6,11 +6,17 @@
 
 #include "unisock.h"
 #include "trie.h"
+#include "bulb_macros.h"
+#include "bulb_structs.h"
 #include "shared_interface.h"
 #include "server_node.h"
 #include "userinfo_obj.h"
 #include "disconnect_obj.h"
 #include "stdout_obj.h"
+
+#ifdef SERVER
+#   include "bulb_server.h"
+#endif
 
 // Flag a client node for deletion.
 static inline void _client_flag_for_deletion(struct client_node* client, bool server_shutdown)
@@ -144,8 +150,7 @@ struct client_node* server_find_by_name(struct server_node* server, const char* 
     return trie_find(server->clients, name);
 }
 
-// Kick a client. This should be called from server code only, and is assumed to be
-// called only from object code too.
+// Kick a client. This should be called from server code only.
 void server_kick(struct server_node* server, struct client_node* client, const char* msg)
 {
 #ifdef SERVER
@@ -155,7 +160,7 @@ void server_kick(struct server_node* server, struct client_node* client, const c
     
     // Write to the user itself that they have been kicked.
     char buffer[1024 + MAX_NAME_LENGTH];
-    snprintf(buffer, sizeof(buffer), "\nYou have been kicked from the server%s%s\n",
+    snprintf(buffer, sizeof(buffer), "You have been kicked from the server%s%s\n",
         (strlen(msg) > 0 ? ": " : "."), msg);
     stdout_obj_write(&client->mt_sock, buffer, STDOUT_KICK_MSG);
 
@@ -170,6 +175,32 @@ void server_kick(struct server_node* server, struct client_node* client, const c
 #endif
 
     ASSERT(false, return);
+}
+
+// Ban an address. As the client is not always assumed to be in the server, an immediate 
+// kick should be invoked separately. This should be called from server code only. Returns 
+// false if the client was already banned.
+bool server_ban(struct server_node* server, const char* ip_addr, const char* reason)
+{
+#ifdef SERVER
+    struct bulb_ban obj = { .ip_addr = ip_addr, .reason = reason };
+    server_throw_exception(server->bulb_server, SERVER_BAN_CLIENT, (void*)&obj);
+    return !obj.is_banned;
+#endif
+
+    ASSERT(false, return false);
+}
+
+// Unbans an address. Returns false if the address was not in the ban database.
+bool server_unban(struct server_node* server, const char* ip_addr)
+{
+#ifdef SERVER
+    struct bulb_ban obj = { .ip_addr = ip_addr };
+    server_throw_exception(server->bulb_server, SERVER_UNBAN_CLIENT, (void*)&obj);
+    return obj.is_banned;
+#endif
+
+    ASSERT(false, return false);
 }
 
 // Disconnect a client that is flagged for deletion.

@@ -23,10 +23,9 @@ struct bulb_obj* connect_obj_read(struct mt_socket* sock, struct bulb_obj* heade
 // Returns false on failure.
 bool connect_obj_write(struct mt_socket* sock, struct userinfo_obj* userinfo, bool validate_only)
 {
-    struct connect_obj obj = { };
-    obj.base.type = BULB_CONNECT;
-    obj.base.size = sizeof(struct connect_obj);
-    obj.validate_only = validate_only;
+    struct connect_obj obj = { .base.type = BULB_CONNECT, 
+                               .base.size = sizeof(struct connect_obj),
+                               .validate_only = validate_only };
     if (userinfo != NULL)
         memcpy(&obj.userinfo, userinfo, sizeof(struct userinfo_obj));
     return bulb_obj_write(sock, (struct bulb_obj*)&obj);

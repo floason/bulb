@@ -25,11 +25,13 @@ char name_buffer[COLOR_LENGTH + MAX_NAME_LENGTH + COLOR_LENGTH + 1];
 mtx_t print_message_lock;
 atomic_bool print_message_lock_busy;
 
-struct trie* cli_cmds = NULL;
-struct bulb_userinfo userinfo = { 0 };
+struct trie* cli_cmds                       = NULL;
+struct bulb_userinfo userinfo               = { 0 };
 
-struct bulb_client* client = NULL;
-struct bulb_server* server = NULL;
+struct bulb_client* client                  = NULL;
+struct bulb_server* server                  = NULL;
+
+static bool server_exit = false;
 
 void clear_input_buffer_on_screen()
 {
@@ -48,6 +50,16 @@ void clear_input_buffer_on_screen()
 
 void print_message(const char* message, enum stdout_type msg_type)
 {   
+    if (server_exit)
+        return;
+
+    // Disable this function for future uses if the client was kicked from the server.
+    if (msg_type == STDOUT_KICK_MSG || msg_type == STDOUT_BAN_MSG || msg_type == STDOUT_SERVER_SHUTDOWN)
+    {
+        server_exit = true;
+        waiting_for_input = false;
+    }
+
     // Use mutex locking to ensure that messages are outputted synchronously.
     atomic_store(&print_message_lock_busy, true);
     mtx_lock(&print_message_lock);
@@ -65,12 +77,14 @@ void print_message(const char* message, enum stdout_type msg_type)
     unsigned line_length = strlen(userinfo.name) + 2 + input_buffer_w;
 
     // Any pending client user input must be cleared first.
-    if (waiting_for_input)
+    if (msg_type == STDOUT_BAN_MSG)
+        printf_clear_screen();
+    else if (waiting_for_input)
         clear_input_buffer_on_screen();
 
     // Always print the message first, which should already be terminated with a newline.
-    bool make_red = ((msg_type == STDOUT_KICK_MSG) || (msg_type == STDOUT_SERVER_SHUTDOWN));
-    printf("%s%s%s", (make_red ? COLOR_RED : ""), message, COLOR_DEFAULT);
+    bool print_red = (msg_type == STDOUT_KICK_MSG || msg_type == STDOUT_SERVER_SHUTDOWN);
+    printf("%s%s%s", (print_red ? COLOR_RED "\n" : ""), message, COLOR_DEFAULT);
 
     // If we had to do some console cleanup beforehand, print the current 
     // input buffer again.

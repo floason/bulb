@@ -26,9 +26,8 @@ bool update_userinfo_obj_write(struct mt_socket* sock,
                                struct bulb_userinfo* userinfo, 
                                const char* client_name)
 {
-    struct update_userinfo_obj obj = { };
-    obj.base.type = BULB_UPDATE_USERINFO;
-    obj.base.size = sizeof(struct update_userinfo_obj);
+    struct update_userinfo_obj obj = { .base.type = BULB_UPDATE_USERINFO,
+                                       .base.size = sizeof(struct update_userinfo_obj) };
     memcpy(&obj.updated_info, userinfo, sizeof(obj.updated_info));
     strncpy(obj.client_name, client_name, sizeof(obj.client_name));
     return bulb_obj_write(sock, (struct bulb_obj*)&obj);

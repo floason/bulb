@@ -249,9 +249,6 @@ bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success
 void client_free(struct bulb_client* client)
 {
     ASSERT(client, return);
-#if WIN32
-    WSACleanup();
-#endif
 
     client->is_connected = false;
 
@@ -266,4 +263,8 @@ void client_free(struct bulb_client* client)
     tagged_free(client, TAG_BULB_CLIENT);
 
     bulb_cmds_cleanup();
+
+#if WIN32
+    WSACleanup();
+#endif
 }

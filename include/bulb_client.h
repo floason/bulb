@@ -13,6 +13,8 @@
 #   include "server_node.h"
 #endif
 
+// TODO: add function for getting list of userinfo objects
+
 struct bulb_client;
 
 // Unless specified, data in the exception handler function is NULL by default.

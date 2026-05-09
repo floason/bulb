@@ -22,6 +22,8 @@ struct bulb_userinfo
 
     // Server-only settings.
     bool is_server;
+    bool init_bulb_banlist_database;    // Used to initialise the Bulb flat-file banlist database.
+    bool print_ban_message_to_all;      // Print ban message to all clients if banned address connects.
     unsigned server_shutdown_timeout_s;
 
     // Variables modified by the running server instance.
@@ -48,6 +50,18 @@ struct bulb_message
     bool is_server;
 };
 
+struct bulb_ban
+{
+    // Information describing who to ban and why.
+    const char* ip_addr;
+    const char* reason;
+    void* additional_data;  // Unused if using Bulb's banlist implementation.
+
+    // Response from the exception handler. If this is true, the reason will
+    // be stored in the reason field.
+    bool is_banned;
+};
+
 // Set default settings for a bulb_userinfo struct instance.
 static inline void bulb_userinfo_defaults(struct bulb_userinfo* userinfo)
 {
@@ -55,6 +69,8 @@ static inline void bulb_userinfo_defaults(struct bulb_userinfo* userinfo)
     {
         userinfo->timeout_s = 300;
         userinfo->server_shutdown_timeout_s = 5;
+        userinfo->init_bulb_banlist_database = true;
+        userinfo->print_ban_message_to_all = true;
     }
     else
     {
