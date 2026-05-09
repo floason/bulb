@@ -12,7 +12,8 @@ static struct trie* _trie_find(struct trie* trie, const char* key)
     ASSERT(trie, return NULL);
 
     int len = strlen(key);
-    ASSERT(len > 0, return NULL);
+    if (len == 0)
+        return NULL;
 
     struct trie* child = trie->children;
     for (int i = 0; i < len; i++)

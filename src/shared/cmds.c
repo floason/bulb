@@ -156,38 +156,55 @@ bool bulb_parse_cmd_input(struct server_node* server, const char* buffer)
     // handle creating the final parameter/finalising the command name.
     char* temp_buffer = params.argv[params.argc] = tagged_malloc(temp_len, TAG_TEMP);
     bool in_quotes = false;
-    for (int i = 0; i < temp_len; i++)
+    bool terminate = false;
+    size_t offset = 0;
+    for (; offset < temp_len; offset++)
     {
-        switch (buffer[i])
+        switch (buffer[offset])
         {
             case '\"':
                 in_quotes = !in_quotes;
                 continue;
             case '\0':
+                offset++;
                 in_quotes = false;
+                terminate = true;
                 break;
+            case '&':
+                // Allow commands to be chained together if separated by &&.
+                if (offset + 1 < temp_len && buffer[offset + 1] == '&' && !in_quotes)
+                {
+                    offset += 2;
+                    in_quotes = false;
+                    terminate = true;
+                    break;
+                }
         }
 
-        
-        if ((isspace(buffer[i]) || buffer[i] == '\0') && strlen(temp_buffer) > 0 && !in_quotes)
+        if ((isspace(buffer[offset]) && !in_quotes) || terminate)
         {
-            size_t cmd_len = strlen(cmd);
-            if (cmd_len == 0)
+            if (strlen(temp_buffer) > 0)
             {
-                strncpy(cmd, temp_buffer, sizeof(cmd));
-                memset(temp_buffer, 0, temp_len);
+                size_t cmd_len = strlen(cmd);
+                if (cmd_len == 0)
+                {
+                    strncpy(cmd, temp_buffer, sizeof(cmd));
+                    memset(temp_buffer, 0, temp_len);
+                }
+                else
+                {
+                    char** new = tagged_calloc(1 + (++params.argc), sizeof(char*), TAG_TEMP);
+                    memcpy(new, params.argv, sizeof(char**) * params.argc);
+                    tagged_free(params.argv, TAG_TEMP);
+                    params.argv = new;
+                    temp_buffer = params.argv[params.argc] = tagged_malloc(temp_len, TAG_TEMP);
+                }
             }
-            else
-            {
-                char** new = tagged_calloc(1 + (++params.argc), sizeof(char*), TAG_TEMP);
-                memcpy(new, params.argv, sizeof(char**) * params.argc);
-                tagged_free(params.argv, TAG_TEMP);
-                params.argv = new;
-                temp_buffer = params.argv[params.argc] = tagged_malloc(temp_len, TAG_TEMP);
-            }
+            if (terminate)
+                break;
         }
         else
-            temp_buffer[strlen(temp_buffer)] = buffer[i];
+            temp_buffer[strlen(temp_buffer)] = buffer[offset];
     }
 
     // The temporary buffer must be free()'d separately as it is still re-allocated 
@@ -204,7 +221,7 @@ finish:
     for (int i = 0; i < params.argc; i++)
         tagged_free(params.argv[i], TAG_TEMP);
     tagged_free(params.argv, TAG_TEMP);
-    return cmd_success;
+    return cmd_success && ((offset < temp_len) ? bulb_parse_cmd_input(server, &buffer[offset]) : true);
 }
 
 // Register all shared commands.
