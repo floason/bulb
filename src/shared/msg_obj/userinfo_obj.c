@@ -12,6 +12,7 @@
 
 #include "unisock.h"
 #include "bulb_version.h"
+#include "shared_interface.h"
 #include "stdout_obj.h"
 #include "userinfo_obj.h"
 #include "connect_obj.h"
@@ -43,21 +44,20 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     // Reject clients with empty usernames.
     if (strlen(obj->info.name) == 0)
     {
-        stdout_obj_write(&client->mt_sock, "Your username cannot be empty!\n");
+        stdout_obj_write(&client->mt_sock, "Your username cannot be empty!\n", STDOUT_KICK_MSG);
         goto kick_client;
     }
 
     // Reject clients with non-renderable usernames.
     if (!str_isprint(obj->info.name))
     {
-        stdout_obj_write(&client->mt_sock, "Your username must contain only displayable characters!\n");
+        stdout_obj_write(&client->mt_sock, "Your username must contain only displayable characters!\n",
+            STDOUT_KICK_MSG);
         goto kick_client;
     }
 
-    // Get the connecting IP address.
-    inet_ntop(AF_INET, &client->addr.sin_addr, obj->info.ip_addr, sizeof(obj->info.ip_addr));
-
     // Reject the client if its version does not match that of the server.
+    memcpy(obj->info.ip_addr, client->ip_addr, sizeof(obj->info.ip_addr));
     if (obj->info.major != MAJOR || obj->info.minor != MINOR || obj->info.patch != PATCH)
     {
         // Attempt to inform the client that its version number is incorrect.
@@ -65,11 +65,11 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         snprintf(client_buffer, sizeof(client_buffer), "Your client version is %d.%d.%d, however the "   \
             "server expects a client version of %d.%d.%d!\n", obj->info.major, obj->info.minor, 
             obj->info.patch, MAJOR, MINOR, PATCH);
-        stdout_obj_write(&client->mt_sock, client_buffer);
+        stdout_obj_write(&client->mt_sock, client_buffer, STDOUT_KICK_MSG);
 
         // Report the invalid version of the connecting client to the server 
         // console.
-        server_printf(server, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d (server " \
+        bulb_printf(server, "Client \"%s\" (%s) failed to connect as its version is %d.%d.%d (server " \
             "expects version %d.%d.%d)\n", obj->info.name, obj->info.ip_addr, obj->info.major, 
             obj->info.minor, obj->info.patch, MAJOR, MINOR, PATCH);
 
@@ -83,8 +83,8 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         if (strcmp(obj->info.name, node->userinfo->info.name) == 0)
         {
             stdout_obj_write(&client->mt_sock, 
-                "Sorry, another client is already connected with that name!\n");
-            server_printf(server, "Client \"%s\" (%s) failed to connect as the given username is "      \
+                "Sorry, another client is already connected with that name!\n", STDOUT_KICK_MSG);
+            bulb_printf(server, "Client \"%s\" (%s) failed to connect as the given username is "      \
                 "already occupied\n", obj->info.name, obj->info.ip_addr);
             
             client_kicked = true;
@@ -103,10 +103,10 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     {
         char buffer[64 + MAX_NAME_LENGTH];
         snprintf(buffer, sizeof(buffer), "Client \"%s\" has connected\n", client->userinfo->info.name);
-        stdout_obj_write(&node->mt_sock, buffer);
+        stdout_obj_write(&node->mt_sock, buffer, STDOUT_GENERIC);
     });
     connect_obj_write(&client->mt_sock, NULL, true);
-    server_printf(server, "Client \"%s\" (%s) has connected\n", client->userinfo->info.name, 
+    bulb_printf(server, "Client \"%s\" (%s) has connected\n", client->userinfo->info.name, 
         obj->info.ip_addr);
 
     // Send the server's userinfo node to the client.

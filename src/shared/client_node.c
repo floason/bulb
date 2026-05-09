@@ -158,8 +158,7 @@ flagged_for_deletion:
         // If a socket timeout occurred, the given client node will actually still be
         // connected to the server. Thus, its disconnect sequence must be initiated.
 #ifdef CLIENT
-        client_throw_exception(client->bulb_client, CLIENT_PRINT_STDOUT, 
-            (void*)"Exceeded client timeout duration!\n");
+        bulb_printf(client, "\nExceeded client timeout duration!\n");
         server_disconnect_client(server, client, false, false, false);
 #else
         server_kick(server, client, "Server timeout duration exceeded");

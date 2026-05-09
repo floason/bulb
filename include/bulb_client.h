@@ -22,7 +22,7 @@ enum client_error_state
     CLIENT_OK,
 
     // Exceptions which do not disrupt the client instance.
-    CLIENT_PRINT_STDOUT,        // data is const char*
+    CLIENT_PRINT_STDOUT,        // data is bulb_stdout*
     CLIENT_RECEIVED_MESSAGE,    // data is bulb_message*
     CLIENT_STATUS_CMD,          // data is bulb_userinfo* (first instance is server, rest are clients)
 

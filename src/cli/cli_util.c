@@ -46,7 +46,7 @@ void clear_input_buffer_on_screen()
     clear_lines_from_y(cursor_y - lines + 1, lines);
 }
 
-void print_message(const char* message)
+void print_message(const char* message, enum stdout_type msg_type)
 {   
     // Use mutex locking to ensure that messages are outputted synchronously.
     atomic_store(&print_message_lock_busy, true);
@@ -69,7 +69,8 @@ void print_message(const char* message)
         clear_input_buffer_on_screen();
 
     // Always print the message first, which should already be terminated with a newline.
-    printf("%s", message);
+    bool make_red = ((msg_type == STDOUT_KICK_MSG) || (msg_type == STDOUT_SERVER_SHUTDOWN));
+    printf("%s%s%s", (make_red ? COLOR_RED : ""), message, COLOR_DEFAULT);
 
     // If we had to do some console cleanup beforehand, print the current 
     // input buffer again.

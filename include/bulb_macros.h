@@ -12,6 +12,8 @@
 #define MAX_MESSAGE_LENGTH  2048
 #define MAX_ERROR_LENGTH    128 // Only used internally.
 
+#define IPV4_ADDRESS_STRLEN 16  // xxx.xxx.xxx.xxx\0
+
 #ifdef BULB_SHARED_LIBRARY
 #   ifdef WIN32
 #      ifdef BULB_EXPORT
@@ -25,3 +27,11 @@
 #else
 #   define BULB_API
 #endif
+
+// Types of *_PRINT_STDOUT.
+enum stdout_type
+{
+    STDOUT_GENERIC,
+    STDOUT_KICK_MSG,
+    STDOUT_SERVER_SHUTDOWN
+};

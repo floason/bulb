@@ -46,6 +46,6 @@ static inline void cleanup()
 
 void clear_input_buffer_on_screen();
 
-void print_message(const char* message);
+void print_message(const char* message, enum stdout_type msg_type);
 
 void evaluate_status_cmd(struct bulb_userinfo* info);

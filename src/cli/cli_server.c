@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "unisock.h"
+#include "bulb_macros.h"
 #include "bulb_server.h"
 
 #include "cli_server.h"
@@ -37,7 +38,7 @@ static bool _cli_server_exception_handler(struct bulb_server* server,
             char buffer[128];
             snprintf(buffer, sizeof(buffer), "Failed to accept new client connection: %d\n", 
                 socket_errno());
-            print_message(buffer);
+            print_message(buffer, STDOUT_GENERIC);
             return true;
         }
 
@@ -52,12 +53,15 @@ static bool _cli_server_exception_handler(struct bulb_server* server,
                 msg->name, 
                 COLOR_DEFAULT,
                 msg->message);
-            print_message(buffer);
+            print_message(buffer, STDOUT_GENERIC);
             return true;
         }
         case SERVER_PRINT_STDOUT:
-            print_message((const char*)data);
+        {
+            struct bulb_stdout* obj = (struct bulb_stdout*)data;
+            print_message(obj->message, obj->type);
             return true;
+        }
 
         // Evaluate the status command.
         case SERVER_STATUS_CMD:

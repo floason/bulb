@@ -290,7 +290,7 @@ new_iteration:
                     if (cmd_success)
                         printf("%sCommand executed successfully!%s\n", COLOR_GREEN, COLOR_DEFAULT);
                     else
-                        printf("%sCould not find command.%s\n", COLOR_RED, COLOR_DEFAULT);
+                        printf("%sCould not execute command.%s\n", COLOR_RED, COLOR_DEFAULT);
                 }
 
                 memset(input_buffer, '\0', sizeof(input_buffer));

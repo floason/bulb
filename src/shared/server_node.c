@@ -6,14 +6,11 @@
 
 #include "unisock.h"
 #include "trie.h"
+#include "shared_interface.h"
 #include "server_node.h"
 #include "userinfo_obj.h"
 #include "disconnect_obj.h"
 #include "stdout_obj.h"
-
-#ifdef SERVER
-#   include "bulb_server.h"
-#endif
 
 // Flag a client node for deletion.
 static inline void _client_flag_for_deletion(struct client_node* client, bool server_shutdown)
@@ -92,8 +89,8 @@ void server_disconnect_client(struct server_node* server,
     {
         if (client->userinfo != NULL)
         {
-            server_printf(server, "Client \"%s\" (%s) has disconnected\n", client->userinfo->info.name, 
-                client->userinfo->info.ip_addr);
+            bulb_printf(server, "Client \"%s\" (%s) has disconnected\n", client->userinfo->info.name, 
+                client->ip_addr);
 
             // The server reports this to clients, rather than simply printing this on each
             // client, so that I don't have to re-implement the same code used with stdout_obj
@@ -101,11 +98,11 @@ void server_disconnect_client(struct server_node* server,
             char buffer[64 + MAX_NAME_LENGTH];
             snprintf(buffer, sizeof(buffer), "Client \"%s\" has disconnected\n",
                 client->userinfo->info.name);
-            LOOP_CLIENTS(server, client, node, stdout_obj_write(&node->mt_sock, buffer));
+            LOOP_CLIENTS(server, client, node, stdout_obj_write(&node->mt_sock, buffer, STDOUT_GENERIC));
         }
         else
-            server_printf(server, "Client from address %s failed to connect\n", 
-                client->userinfo->info.ip_addr);
+            bulb_printf(server, "Client from address %s failed to connect\n", 
+                client->ip_addr);
     }
 
     // Synchronise the client's departure with all other clients.
@@ -123,9 +120,11 @@ void server_disconnect_client(struct server_node* server,
     if (unlink)
     {
         if (client->userinfo)
+        {
             trie_delete(server->clients, client->userinfo->info.name);
-        LINKED_LIST_REMOVE((&client->userinfo->info), server->clients_info_head, 
-            server->clients_info_tail);
+            LINKED_LIST_REMOVE((&client->userinfo->info), server->clients_info_head, 
+                server->clients_info_tail);
+        }
         LINKED_LIST_ADD(client, server->flagged_clients_list, server->flagged_clients_list_tail);
     }
 
@@ -150,19 +149,23 @@ struct client_node* server_find_by_name(struct server_node* server, const char* 
 void server_kick(struct server_node* server, struct client_node* client, const char* msg)
 {
 #ifdef SERVER
-    // Log the client's departure in the server console and to the client itself.
-    server_printf(server, "Client \"%s\" (%s) has been kicked from the server: %s\n", 
-        client->userinfo->info.name, client->userinfo->info.ip_addr, msg);
-    stdout_obj_write(&client->mt_sock, msg);
+    // Log the client's departure in the server console.
+    bulb_printf(server, "Client \"%s\" (%s) has been kicked from the server%s%s\n", 
+        client->userinfo->info.name, client->ip_addr, (strlen(msg) > 0 ? ": " : "."), msg);
     
-    // Write to all other clients that this user has been kicked.
+    // Write to the user itself that they have been kicked.
     char buffer[1024 + MAX_NAME_LENGTH];
-    snprintf(buffer, sizeof(buffer), "Client \"%s\" has been kicked from the server: %s\n",
-        client->userinfo->info.name, msg);
-    LOOP_CLIENTS(server, client, node, stdout_obj_write(&node->mt_sock, buffer));
+    snprintf(buffer, sizeof(buffer), "\nYou have been kicked from the server%s%s\n",
+        (strlen(msg) > 0 ? ": " : "."), msg);
+    stdout_obj_write(&client->mt_sock, buffer, STDOUT_KICK_MSG);
+
+    // Write to all other clients that this user has been kicked.
+    snprintf(buffer, sizeof(buffer), "Client \"%s\" has been kicked from the server%s%s\n",
+        client->userinfo->info.name, (strlen(msg) > 0 ? ": " : "."), msg);
+    LOOP_CLIENTS(server, client, node, stdout_obj_write(&node->mt_sock, buffer, STDOUT_GENERIC));
 
     // Start disconnecting the client.
-    server_disconnect_client(server, client, false, true, false);
+    server_disconnect_client(server, client, false, true, true);
     return;
 #endif
 
@@ -214,18 +217,4 @@ void server_disconnect_all_clients(struct server_node* server)
     cnd_destroy(&server->server_emptied_signal);
 
     tagged_free(server, TAG_SERVER_NODE);
-}
-
-// Print a message to the server console by triggering a SERVER_PRINT_STDOUT exception.
-void server_printf(struct server_node* server, char* buffer, ...)
-{
-#ifdef SERVER
-    va_list argv;
-    char message[2048];
-    va_start(argv, buffer);
-    vsnprintf(message, sizeof(message), buffer, argv);
-    va_end(argv);
-
-    server_throw_exception(server->bulb_server, SERVER_PRINT_STDOUT, (void*)message);
-#endif
 }

@@ -9,6 +9,7 @@
 #include <stddef.h>
 
 #include "unisock.h"
+#include "bulb_macros.h"
 #include "server_node.h"
 #include "client_node.h"
 #include "bulb_obj.h"
@@ -16,6 +17,7 @@
 struct stdout_obj
 {
     struct bulb_obj base;
+    enum stdout_type type;
     char buffer[];  // strlen() can be used to determine the size of the string to output
 };
 
@@ -23,7 +25,7 @@ struct stdout_obj
 struct bulb_obj* stdout_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size);
 
 // Write a stdout_obj object. Returns false on failure.
-bool stdout_obj_write(struct mt_socket* sock, const char* msg);
+bool stdout_obj_write(struct mt_socket* sock, const char* msg, enum stdout_type type);
 
 // Process a stdout_obj object.
 void stdout_obj_process(struct stdout_obj* obj, struct server_node* server, struct client_node* client);

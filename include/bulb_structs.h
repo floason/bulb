@@ -7,8 +7,6 @@
 
 #include "bulb_macros.h"
 
-#define IPV4_ADDRESS_STRLEN 16  // xxx.xxx.xxx.xxx\0
-
 struct bulb_userinfo
 {
     char name[MAX_NAME_LENGTH + 1];
@@ -35,6 +33,12 @@ struct bulb_userinfo
     // can be traversed, such as through invoking the status command.
     struct bulb_userinfo* prev;
     struct bulb_userinfo* next;
+};
+
+struct bulb_stdout
+{
+    const char* message;
+    enum stdout_type type;
 };
 
 struct bulb_message

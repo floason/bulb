@@ -10,8 +10,9 @@
 #include <stdbool.h>
 
 #include "unisock.h"
-#include "bulb_structs.h"
 #include "trie.h"
+#include "bulb_structs.h"
+#include "shared_interface.h"
 #include "client_node.h"   
     
 #define LOOP_CLIENTS(SERVER, EXCEPT, ID, SCOPE)                                 \
@@ -24,7 +25,7 @@
                 SCOPE;                                                          \
         });                                                                     \
         mtx_unlock(&SERVER->free_flagged_clients_mutex);                        \
-    }                                                                       
+    }                                                                  
 
 struct bulb_server;
 
@@ -90,6 +91,3 @@ void server_free_flagged_clients(struct server_node* server);
 // all client nodes from memory. This should only be called when the Bulb protocol is
 // being terminated as it frees the server node from memory.
 void server_disconnect_all_clients(struct server_node* server);
-
-// Print a message to the server console by triggering a SERVER_PRINT_STDOUT exception.
-void server_printf(struct server_node* server, char* buffer, ...);

@@ -12,8 +12,7 @@
 struct cmd_args
 {
     int argc;
-    char* param;
-    struct cmd_args* next;
+    char** argv;
 };
 
 typedef bool (*bulb_cmd_func)(struct server_node* server, struct cmd_args* params);
@@ -27,7 +26,10 @@ bool bulb_register_cmd(const char* name, bulb_cmd_func func);
 bool bulb_parse_cmd_input(struct server_node* server, const char* buffer);
 
 // Register all shared commands.
-void bulb_register_shared_cmds();
+void bulb_cmds_init();
+
+// Register all server commands.
+void bulb_register_server_cmds();
 
 // Cleanup on process exit.
 void bulb_cmds_cleanup();

@@ -24,7 +24,7 @@ enum server_error_state
 
     // Exceptions which do not disrupt the server instance.
     SERVER_CLIENT_ACCEPT_FAIL,
-    SERVER_PRINT_STDOUT,        // data is const char*
+    SERVER_PRINT_STDOUT,        // data is bulb_stdout*
     SERVER_RECEIVED_MESSAGE,    // data is bulb_message*
     SERVER_STATUS_CMD,          // data is bulb_userinfo* (first instance is server, rest are clients)
 

@@ -19,6 +19,7 @@
 #include "obj_process.h"
 #include "message_obj.h"
 #include "stdout_obj.h"
+#include "userinfo_obj.h"
 #include "ping_obj.h"
 
 #ifdef WIN32
@@ -118,6 +119,9 @@ static int _server_listen_thread(void* s)
                 return 0;
             continue;
         }
+
+        // Get the connecting IP address.
+        inet_ntop(AF_INET, &node->addr.sin_addr, node->ip_addr, sizeof(node->ip_addr));
         
         setup_mt_socket(&node->mt_sock, sock);
         mt_socket_set_non_blocking(&node->mt_sock);
@@ -186,7 +190,8 @@ struct bulb_server* server_init(uint16_t port, enum server_error_state* error_st
     server->server_node = server_shared_node_alloc();
     server->server_node->bulb_server = server;
     
-    bulb_register_shared_cmds();
+    bulb_cmds_init();
+    bulb_register_server_cmds();
     return server;
 
 fail:
@@ -309,7 +314,7 @@ void server_shutdown(struct bulb_server* server, int timeout)
 
     LOOP_CLIENTS(server->server_node, NULL, node, 
     {
-        stdout_obj_write(&node->mt_sock, "The server has been shut down.\n");
+        stdout_obj_write(&node->mt_sock, "\nThe server has been shut down.\n", STDOUT_SERVER_SHUTDOWN);
         server_disconnect_client(server->server_node, node, true, false, true);
     });
 

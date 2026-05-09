@@ -42,12 +42,15 @@ static bool _client_exception_handler(struct bulb_client* client,
                 msg->name, 
                 COLOR_DEFAULT,
                 msg->message);
-            print_message(buffer);
+            print_message(buffer, STDOUT_GENERIC);
             return true;
         }
         case CLIENT_PRINT_STDOUT:
-            print_message((const char*)data);
+        {
+            struct bulb_stdout* obj = (struct bulb_stdout*)data;
+            print_message(obj->message, obj->type);
             return true;
+        }
 
         // Evaluate the status command.
         case CLIENT_STATUS_CMD:

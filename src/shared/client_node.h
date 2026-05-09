@@ -11,7 +11,9 @@
 #include <threads.h>
 
 #include "unisock.h"
+#include "bulb_macros.h"
 #include "trie.h"
+#include "shared_interface.h"
 
 #define SPAWN_CLIENT_THREAD(CLIENT, NAME)                                   \
     {                                                                       \
@@ -52,6 +54,7 @@ struct client_node
 
 #ifdef SERVER
     struct sockaddr_in addr;
+    char ip_addr[IPV4_ADDRESS_STRLEN];
 #endif
 
     // Client communication architecture.

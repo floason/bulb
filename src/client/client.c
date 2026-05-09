@@ -90,7 +90,7 @@ struct bulb_client* client_init(const char* host,
     setup_mt_socket(&client->local_node->mt_sock, sock);
     client->server_node = client->local_node->server_node = server_shared_node_alloc();
 
-    bulb_register_shared_cmds();
+    bulb_cmds_init();
     return client;
 
 fail:
