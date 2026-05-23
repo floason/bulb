@@ -22,9 +22,10 @@ struct bulb_userinfo
 
     // Server-only settings.
     bool is_server;
+    bool ping_clients;
     bool init_bulb_banlist_database;    // Used to initialise the Bulb flat-file banlist database.
     bool print_ban_message_to_all;      // Print ban message to all clients if banned address connects.
-    unsigned server_shutdown_timeout_s;
+    unsigned server_shutdown_timeout_s; // Time spent waiting for clients to exit on called server exit.
 
     // Variables modified by the running server instance.
     unsigned ping_ms;
@@ -35,6 +36,7 @@ struct bulb_userinfo
     // can be traversed, such as through invoking the status command.
     struct bulb_userinfo* prev;
     struct bulb_userinfo* next;
+    bool linked;
 };
 
 struct bulb_stdout
@@ -68,6 +70,7 @@ static inline void bulb_userinfo_defaults(struct bulb_userinfo* userinfo)
     if (userinfo->is_server)
     {
         userinfo->timeout_s = 300;
+        userinfo->ping_clients = true;
         userinfo->server_shutdown_timeout_s = 5;
         userinfo->init_bulb_banlist_database = true;
         userinfo->print_ban_message_to_all = true;

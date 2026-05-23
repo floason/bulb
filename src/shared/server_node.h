@@ -10,11 +10,13 @@
 #include <stdbool.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "trie.h"
 #include "bulb_structs.h"
 #include "shared_interface.h"
 #include "client_node.h"   
-    
+
+// Clients should NOT be disconnected/kicked from the server within this loop!
 #define LOOP_CLIENTS(SERVER, EXCEPT, ID, SCOPE)                                 \
     {                                                                           \
         mtx_lock(&SERVER->free_flagged_clients_mutex);                          \
@@ -33,8 +35,10 @@ struct server_node
 {
 #ifdef SERVER
     struct bulb_server* bulb_server;
+    SOCKET listen_sock;
 #endif
 
+    // Server information.
     struct bulb_userinfo info;
 
     unsigned number_connected;
@@ -43,13 +47,25 @@ struct server_node
     mtx_t server_emptied_mutex;
     cnd_t server_emptied_signal;
 
+    // Client socket communication architecture.
+    thrd_t client_manage_thread;
+    mtx_t client_update_lock;
+    cnd_t client_update_signal;
+    bool cleanup;
+    struct mt_socket* socket_recv_queue;
+    struct mt_socket* socket_recv_tail;
+    struct mt_socket* socket_send_queue;
+    struct mt_socket* socket_send_tail;
+    struct socket_manager* sm_head;
+    struct socket_manager* sm_tail;
+
     // Dictionary of actual connected clients.
     struct trie* clients;
 
     // List of clients' userinfo objects.
     struct bulb_userinfo* clients_info_head;
     struct bulb_userinfo* clients_info_tail;
-
+    
     // List of clients flagged for deletion.
     struct client_node* flagged_clients_list;
     struct client_node* flagged_clients_list_tail;
@@ -59,6 +75,10 @@ typedef void (*loop_clients_func)(struct server_node* server, struct client_node
 
 // Initialise the server node.
 struct server_node* server_shared_node_alloc();
+
+// Begin listening to a client's socket. The client's socket object will be
+// automatically released from memory as soon as it is disused.
+void server_listen_client(struct server_node* server, struct client_node* client);
 
 // Connect a new client to a server node's clients list.
 void server_connect_client(struct server_node* server, struct client_node* client);

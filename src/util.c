@@ -21,6 +21,7 @@ static struct tagged_chunk
 
     struct tagged_chunk* prev;
     struct tagged_chunk* next;
+    bool linked;
     enum tags tag;
 } *tagged_head, *tagged_tail;
 
@@ -66,7 +67,7 @@ void sleeps(unsigned seconds)
 #endif
 }
 
-void console_exit_handler(void* func)
+void set_console_exit_handler(void* func)
 {
 #if defined WIN32
     SetConsoleCtrlHandler(func, TRUE);

@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "bulb_obj.h"
 #include "ping_obj.h"
 #include "userinfo_obj.h"
@@ -36,17 +37,17 @@ void ping_obj_process(struct ping_obj* obj, struct server_node* server, struct c
 {
     if (obj->final_destination)
     {
-        timespec_ns_get(&client->mt_sock.ping_end);
-        client->userinfo->info.ping_ms = timespec_diff(&client->mt_sock.ping_end, 
-            &client->mt_sock.ping_start, 3);
+        timespec_ns_get(&client->mt_sock->ping_end);
+        client->userinfo->info.ping_ms = timespec_diff(&client->mt_sock->ping_end, 
+            &client->mt_sock->ping_start, 3);
         client->ready_to_ping = true;
         LOOP_CLIENTS(server, NULL, node, 
         {
-            update_userinfo_obj_write(&node->mt_sock, &client->userinfo->info, 
+            update_userinfo_obj_write(node->mt_sock, &client->userinfo->info, 
                 client->userinfo->info.name);
         });
     }
     else
-        ping_obj_write(&client->mt_sock, true);
+        ping_obj_write(client->mt_sock, true);
     tagged_free(obj, TAG_BULB_OBJ);
 }

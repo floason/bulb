@@ -6,44 +6,16 @@
 #include <ctype.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "bulb_version.h"
 #include "bulb_client.h"
 #include "cmds.h"
-#include "obj_reader.h"
-#include "obj_process.h"
 #include "userinfo_obj.h"
 #include "message_obj.h"
 
 #ifdef WIN32
     static WSADATA wsa_data;
 #endif
-
-// Start reading and processing message objects in a new thread for the given client
-// connection.
-static int server_client_recv_thread(void* c)
-{
-    struct client_node* client = (struct client_node*)c;
-    struct server_node* server = client->server_node;
-
-    for (;;)
-    {
-        char error_msg[MAX_ERROR_LENGTH + 1] = { 0 };
-        struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, error_msg, sizeof(error_msg));
-        if (obj == NULL)
-            goto flagged_for_deletion;
-        
-        ASSERT(bulb_process_object(obj, server, client), goto flagged_for_deletion,
-            "Failed to process Bulb object of type %d\n", obj->type);
-
-        // Periodically deallocate clients marked for deletion.
-        server_free_flagged_clients(server);
-    }
-
-flagged_for_deletion:
-    client_set_status(client, CLIENT_READY_TO_DELETE);
-    cnd_signal(&client->mt_sock.send_signal);
-    return 0;
-}
 
 // Create a new client instance. Returns NULL on error.
 struct bulb_client* client_init(const char* host, 
@@ -87,7 +59,8 @@ struct bulb_client* client_init(const char* host,
         goto fail; 
     }
     
-    setup_mt_socket(&client->local_node->mt_sock, sock);
+    client->local_node->mt_sock = mt_socket_new(sock);
+    client->local_node->mt_sock->dealloc_func = client_set_ready_to_delete_from_sock;
     client->server_node = client->local_node->server_node = server_shared_node_alloc();
 
     bulb_cmds_init();
@@ -147,20 +120,18 @@ bool client_connect(struct bulb_client* client)
     ASSERT(client, return false);
     ASSERT(!client->is_connected, return false);
 
-    int result = connect(client->local_node->mt_sock.socket, client->addr_ptr->ai_addr, 
+    int result = connect(client->local_node->mt_sock->socket, client->addr_ptr->ai_addr, 
         (int)client->addr_ptr->ai_addrlen);
     if (result == SOCKET_ERROR)
     { 
         client->error_state = CLIENT_SOCKET_FAIL;
         return false; 
     }
-    mt_socket_set_non_blocking(&client->local_node->mt_sock);
+
+    server_listen_client(client->server_node, client->local_node);
     freeaddrinfo(client->addr_ptr);
     client->addr_ptr = NULL;
     client->is_connected = true;
-
-    SPAWN_CLIENT_THREAD(client->local_node, recv_thread);
-    SPAWN_CLIENT_THREAD(client->local_node, send_thread);
     return true;
 }
 
@@ -184,8 +155,7 @@ bool client_authenticate(struct bulb_client* client, struct bulb_userinfo* useri
     obj.info.major = MAJOR;
     obj.info.minor = MINOR;
     obj.info.patch = PATCH;
-    client->local_node->mt_sock.timeout_duration = userinfo->timeout_s;
-    if (!userinfo_obj_write(&client->local_node->mt_sock, &obj))
+    if (!userinfo_obj_write(client->local_node->mt_sock, &obj))
     { 
         client->error_state = CLIENT_AUTH_FAIL;
         return false; 
@@ -194,6 +164,7 @@ bool client_authenticate(struct bulb_client* client, struct bulb_userinfo* useri
     client->local_node->userinfo = tagged_malloc(sizeof(struct userinfo_obj), TAG_BULB_OBJ);
     memcpy(client->local_node->userinfo, &obj, sizeof(struct userinfo_obj));
 
+    // TODO replace busywait with exception!
     while (!client_ready(client));
     return true;
 }
@@ -241,7 +212,7 @@ bool client_input(struct bulb_client* client, const char* msg, bool* cmd_success
         return true;
     }
     
-    message_obj_write(&client->local_node->mt_sock, client->local_node->userinfo->info.name, msg, false);
+    message_obj_write(client->local_node->mt_sock, client->local_node->userinfo->info.name, msg, false);
     return false;
 }
 
@@ -250,6 +221,7 @@ void client_free(struct bulb_client* client)
 {
     ASSERT(client, return);
 
+    client->disconnecting = true;
     client->is_connected = false;
 
     // If the bulb_client instance is being freed from memory, the entire client

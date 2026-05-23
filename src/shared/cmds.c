@@ -5,9 +5,6 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "unisock.h"
-#include "bulb_version.h"
-#include "bulb_macros.h"
 #include "cmds.h"
 #include "trie.h"
 #include "client_node.h"
@@ -16,17 +13,13 @@
 
 #ifdef CLIENT
 #   include "bulb_client.h"
-
-#   define CONSOLE localclient
 #else
 #   include "bulb_server.h"
-
-#   define CONSOLE server
 #endif
 
 #define CMD_ERROR(ERROR_MSG, ...)                                               \
     {                                                                           \
-         bulb_printf(CONSOLE, ERROR_MSG, ##__VA_ARGS__);                        \
+         bulb_printf(BULB_CONSOLE, ERROR_MSG, ##__VA_ARGS__);                   \
          return false;                                                          \
     }
 
@@ -47,7 +40,7 @@ static unsigned bulb_cmds_ref_count;
 // list: lists all commands that are employed.
 bool _cmd_list(struct bulb_cmd* cmd, struct server_node* server, struct cmd_args* params)
 {
-    TRIE_DFS(bulb_cmds, node, bulb_printf(CONSOLE, "- %s\n", ((struct bulb_cmd*)node)->desc));
+    TRIE_DFS(bulb_cmds, node, bulb_printf(BULB_CONSOLE, "- %s\n", ((struct bulb_cmd*)node)->desc));
     return true;
 }
 
@@ -115,7 +108,7 @@ bool _cmd_banned(struct bulb_cmd* cmd, struct server_node* server, struct cmd_ar
     struct bulb_ban obj;
     obj.ip_addr = params->argv[0];
     server_throw_exception(server->bulb_server, SERVER_IS_CLIENT_BANNED, &obj);
-    bulb_printf(CONSOLE, (obj.is_banned ? "yes\n" : "no\n"));
+    bulb_printf(BULB_CONSOLE, (obj.is_banned ? "yes\n" : "no\n"));
 #endif
     return true;
 }

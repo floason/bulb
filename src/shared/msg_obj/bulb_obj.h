@@ -9,6 +9,7 @@
 #include <stddef.h>
 
 #include "unisock.h"
+#include "networking.h"
 
 #define RECV_BUFFER_SIZE    512
 
@@ -22,17 +23,14 @@ enum bulb_obj_type
     BULB_DISCONNECT,
     BULB_MESSAGE,
     BULB_PING,
-    BULB_UPDATE_USERINFO
+    BULB_UPDATE_USERINFO,
+    BULB_RECEIVED
 };
 
 struct bulb_obj
 {
     enum bulb_obj_type type;
     size_t size;
-
-    // Used for linking message objects in an object queue.
-    struct bulb_obj* next;
-    struct bulb_obj* prev;
 };
 
 // This is a basic template for reading a Bulb object that has no additional reading

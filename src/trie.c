@@ -117,21 +117,16 @@ void* trie_find(struct trie* trie, const char* key)
 // or on failure.
 bool trie_delete(struct trie* trie, const char* key)
 {
+    // TODO: trie cleanup
+
     struct trie* node = _trie_find(trie, key);
     if (node == NULL)
         return false;
 
     if (node->value_copied)
         tagged_free(node->value, TAG_TEMP);
-
-    if (node->children == NULL)
-    {
-        node->parent->children = NULL;
-        tagged_free(node, TAG_TRIE);
-    }
-    else
-        node->value = NULL;
-
+    node->value = NULL;
+    
     return true;
 }
 

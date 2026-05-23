@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "bulb_version.h"
 #include "bulb_structs.h"
 #include "shared_interface.h"
@@ -49,14 +50,14 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     // Reject clients with empty usernames.
     if (strlen(obj->info.name) == 0)
     {
-        stdout_obj_write(&client->mt_sock, "Your username cannot be empty!\n", STDOUT_KICK_MSG);
+        stdout_obj_write(client->mt_sock, "Your username cannot be empty!\n", STDOUT_KICK_MSG);
         goto kick_client;
     }
 
     // Reject clients with non-renderable usernames.
     if (!str_isprint(obj->info.name))
     {
-        stdout_obj_write(&client->mt_sock, "Your username must contain only displayable characters!\n",
+        stdout_obj_write(client->mt_sock, "Your username must contain only displayable characters!\n",
             STDOUT_KICK_MSG);
         goto kick_client;
     }
@@ -71,7 +72,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         char buffer[1024 + MAX_NAME_LENGTH];
         snprintf(buffer, sizeof(buffer), "You have been banned from the server%s%s\n",
             (strlen(ban_obj.reason) > 0 ? ": " : "."), ban_obj.reason);
-        stdout_obj_write(&client->mt_sock, buffer, STDOUT_BAN_MSG);
+        stdout_obj_write(client->mt_sock, buffer, STDOUT_BAN_MSG);
 
         // Report the client's ban to the server console.
         bulb_printf(server, "Client \"%s\" (%s) failed to connect due to being banned from the server"  \
@@ -85,7 +86,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
                 " the server%s%s\n", obj->info.name, (strlen(ban_obj.reason) > 0 ? ": " : "."), 
                 ban_obj.reason);
             LOOP_CLIENTS(server, client, node, 
-                stdout_obj_write(&node->mt_sock, buffer, STDOUT_GENERIC));
+                stdout_obj_write(node->mt_sock, buffer, STDOUT_GENERIC));
         }
 
         goto kick_client;
@@ -99,7 +100,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         snprintf(client_buffer, sizeof(client_buffer), "Your client version is %d.%d.%d, however the "  \
             "server expects a client version of %d.%d.%d!\n", obj->info.major, obj->info.minor, 
             obj->info.patch, MAJOR, MINOR, PATCH);
-        stdout_obj_write(&client->mt_sock, client_buffer, STDOUT_KICK_MSG);
+        stdout_obj_write(client->mt_sock, client_buffer, STDOUT_KICK_MSG);
 
         // Report the invalid version of the connecting client to the server 
         // console.
@@ -116,7 +117,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     {
         if (strcmp(obj->info.name, node->userinfo->info.name) == 0)
         {
-            stdout_obj_write(&client->mt_sock, 
+            stdout_obj_write(client->mt_sock, 
                 "Sorry, another client is already connected with that name!\n", STDOUT_KICK_MSG);
             bulb_printf(server, "Client \"%s\" (%s) failed to connect as the given username is "      \
                 "already occupied\n", obj->info.name, obj->info.ip_addr);
@@ -137,9 +138,9 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     {
         char buffer[64 + MAX_NAME_LENGTH];
         snprintf(buffer, sizeof(buffer), "Client \"%s\" has connected\n", client->userinfo->info.name);
-        stdout_obj_write(&node->mt_sock, buffer, STDOUT_GENERIC);
+        stdout_obj_write(node->mt_sock, buffer, STDOUT_GENERIC);
     });
-    connect_obj_write(&client->mt_sock, NULL, true);
+    connect_obj_write(client->mt_sock, NULL, true);
     bulb_printf(server, "Client \"%s\" (%s) has connected\n", client->userinfo->info.name, 
         obj->info.ip_addr);
 
@@ -148,13 +149,13 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     memcpy(&server_obj.info, &server->info, sizeof(server_obj.info));
     server_obj.base.type = BULB_USERINFO;
     server_obj.base.size = sizeof(server_obj);
-    userinfo_obj_write(&client->mt_sock, &server_obj);
+    userinfo_obj_write(client->mt_sock, &server_obj);
 
     // Synchronise the client list on each client.
     LOOP_CLIENTS(server, client, node, 
     {
-        connect_obj_write(&client->mt_sock, node->userinfo, false);
-        connect_obj_write(&node->mt_sock, client->userinfo, false);
+        connect_obj_write(client->mt_sock, node->userinfo, false);
+        connect_obj_write(node->mt_sock, client->userinfo, false);
     });
     
     return;

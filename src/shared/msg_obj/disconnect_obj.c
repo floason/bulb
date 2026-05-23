@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "server_node.h"
 #include "client_node.h"
 #include "disconnect_obj.h"

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "obj_process.h"
 #include "server_node.h"
 #include "client_node.h"
@@ -15,6 +16,7 @@
 #include "message_obj.h"
 #include "ping_obj.h"
 #include "update_userinfo_obj.h"
+#include "received_obj.h"
 
 // Process a Bulb object. The object may be free()'d afterwards. Returns false on error.
 bool bulb_process_object(struct bulb_obj* obj, struct server_node* server, struct client_node* client)
@@ -44,7 +46,11 @@ bool bulb_process_object(struct bulb_obj* obj, struct server_node* server, struc
         case BULB_UPDATE_USERINFO:
             update_userinfo_obj_process((struct update_userinfo_obj*)obj, server, client);
             return true;
+        case BULB_RECEIVED:
+            received_obj_process((struct received_obj*)obj, server, client);
+            return true;
         default:
+            tagged_free(obj, TAG_BULB_OBJ);
             return false;
     }
 }

@@ -8,14 +8,11 @@
 #include "bulb_macros.h"
 #include "bulb_structs.h"
 
-#ifdef CLIENT
-#   include "client_node.h"
-#   include "server_node.h"
-#endif
-
 // TODO: add function for getting list of userinfo objects
 
 struct bulb_client;
+struct client_node;
+struct server_node;
 
 // Unless specified, data in the exception handler function is NULL by default.
 enum client_error_state
@@ -49,18 +46,15 @@ struct bulb_client
 {
     struct addrinfo* addr_ptr;
     bool is_connected;
-    bool disconnect_handled;    // Should be toggled by the exception handler on either
-                                // disconnect events.
+    bool disconnecting;
     enum client_error_state error_state;
 
     // Errors raised outside client_init() will invoke this function. If false is returned
     // for a non-critical error, the client will terminate.
     client_exception_func exception_handler;
 
-#ifdef CLIENT
     struct client_node* local_node;
     struct server_node* server_node;
-#endif
 };
 
 // Create a new client instance. Returns NULL on error.

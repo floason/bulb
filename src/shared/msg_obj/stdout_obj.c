@@ -8,14 +8,12 @@
 #include <string.h>
 
 #include "unisock.h"
+#include "networking.h"
+#include "shared_interface.h"
 #include "server_node.h"
 #include "client_node.h"
 #include "stdout_obj.h"
 #include "userinfo_obj.h"
-
-#ifdef CLIENT
-#   include "bulb_client.h"
-#endif
 
 // Read a stdout_obj. Returns NULL on failure.
 struct bulb_obj* stdout_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size)
@@ -52,10 +50,7 @@ bool stdout_obj_write(struct mt_socket* sock, const char* msg, enum stdout_type 
 void stdout_obj_process(struct stdout_obj* obj, struct server_node* server, struct client_node* client)
 {
 #ifdef CLIENT
-    struct bulb_stdout stdout_obj;
-    stdout_obj.message = obj->buffer;
-    stdout_obj.type = obj->type;
-    client_throw_exception(client->bulb_client, CLIENT_PRINT_STDOUT, (void*)&stdout_obj);
+    bulb_printf_type(client, obj->type, obj->buffer);
 #else
     // Throw an assert as this should've been caught when the object was received.
     ASSERT(false, return, "stdout_obj found in processing queue from client thread!\n");

@@ -58,9 +58,13 @@
 #   define SOCKET_CLOSED        ENOTCONN
 #   define SOCKET_TIMEDOUT      ETIMEDOUT
 #   define SOCKET_AGAIN         EWOULDBLOCK
+
+#   define PIPE_READ            0
+#   define PIPE_WRITE           1
 #endif
 
-#define MT_SOCKET_INDEFINITE    -1L
+#define SOCKET_TRANSFER_CLOSED  0
+#define TIMEOUT_INDEFINITE      -1L
 
 static inline int set_socket_timeout(SOCKET sock, unsigned timeout, bool write)
 {
@@ -83,70 +87,3 @@ static inline int socket_errno()
 #endif
     return errno;
 }
-
-// Due to the multithreaded nature of my code, I decided to create a struct that 
-// encapsulates a SOCKET, coupled with information that manages the read/write
-// state of the given SOCKET.
-
-struct mt_socket_write_node
-{
-    struct mt_socket_write_node* prev;
-    struct mt_socket_write_node* next;
-    size_t len;
-    
-    char data[];
-};
-
-struct mt_socket
-{
-    SOCKET socket;
-    mtx_t read_lock;
-    mtx_t write_lock;
-    int64_t timeout_duration;
-    bool send_timeout;
-
-    cnd_t send_signal;
-    struct mt_socket_write_node* send_queue;
-    struct mt_socket_write_node* send_queue_tail;
-
-    struct timespec ping_start;
-    struct timespec ping_end;
-
-    // recv() may not terminate immediately if the socket's read connection is shut
-    // down. Unfortunately this requires different implementations across separate
-    // platforms.
-    bool _shutdown_sequence_started;
-#if defined WIN32
-    // Use Winsock2's event handling interface for reliably terminating recv()/
-    WSAEVENT _socket_event;
-    WSAEVENT _shut_rd_event;
-#elif defined POSIX
-    // In order to reliably handle terminating recv() when shutting down the socket's
-    // read connection across POSIX systems, poll() will be used with a global event
-    // file descriptor, alongside the given socket.
-    struct pollfd _pfd_socket;
-    struct pollfd _pfd_shutdown;
-#endif
-};
-
-// Configure an mt_socket instance using a pre-initialised socket.
-void setup_mt_socket(struct mt_socket* obj, SOCKET sock);
-
-// Set an mt_socket instance as non-blocking.
-void mt_socket_set_non_blocking(struct mt_socket* obj);
-
-// Wait for recv()/send() to be ready. Returns false on socket close.
-bool mt_socket_poll(struct mt_socket* obj, bool write);
-
-// Signal an mt_socket shutdown attempt without actually shutting the
-// socket's commmunication channels.
-void mt_socket_hint_shutdown(struct mt_socket* obj);
-
-// Call shutdown() on the mt_socket instance.
-void mt_socket_shutdown(struct mt_socket* obj, int flags);
-
-// Clear the mt_socket instance's send queue.
-void mt_socket_clear_queue(struct mt_socket* obj);
-
-// Cleanup an mt_socket instance and shutdown its associated socket.
-void cleanup_mt_socket(struct mt_socket* obj);

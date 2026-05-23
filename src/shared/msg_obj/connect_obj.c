@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "connect_obj.h"
 #include "userinfo_obj.h"
 #include "server_node.h"
@@ -47,7 +48,6 @@ void connect_obj_process(struct connect_obj* obj, struct server_node* server, st
     }
 
     node = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
-    node->mt_sock.socket = INVALID_SOCKET;
     node->status = CLIENT_VALIDATED;
     node->server_node = server;
     node->userinfo = tagged_malloc(sizeof(struct userinfo_obj), TAG_BULB_OBJ);

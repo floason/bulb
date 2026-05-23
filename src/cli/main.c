@@ -164,7 +164,7 @@ CREATE_CONSOLE_EXIT_FUNCTION(_cli_exit,
 int main(int argc, char** argv)
 {
     int return_value = 0;
-    console_exit_handler(_cli_exit);
+    set_console_exit_handler(_cli_exit);
 
     mtx_init(&print_message_lock, mtx_plain | mtx_recursive);
     strcpy(userinfo.description, "using Bulb CLI");

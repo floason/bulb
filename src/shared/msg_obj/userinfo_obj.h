@@ -12,6 +12,8 @@
 #include <stddef.h>
 
 #include "unisock.h"
+
+#include "networking.h"
 #include "bulb_structs.h"
 #include "server_node.h"
 #include "client_node.h"

@@ -28,7 +28,6 @@ static bool _cli_server_exception_handler(struct bulb_server* server,
                 COLOR_DEFAULT);
 
             // Handle the actual disconnect sequence.
-            server->disconnect_handled = true;
             cli_server_cleanup(server);
             exit(0);
 

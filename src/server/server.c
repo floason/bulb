@@ -10,94 +10,22 @@
 #include <time.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "bulb_structs.h"
 #include "bulb_server.h"
 #include "bulb_banlist.h"
 #include "server_node.h"
 #include "client_node.h"
 #include "cmds.h"
-#include "obj_reader.h"
 #include "obj_process.h"
 #include "message_obj.h"
 #include "stdout_obj.h"
-#include "ping_obj.h"
 
 #ifdef WIN32
     static WSADATA wsa_data;
 #endif
 
-// Start reading and processing message objects in a new thread for a given client
-// connection.
-static int server_client_recv_thread(void* c)
-{
-    struct client_node* client = (struct client_node*)c;
-    struct server_node* server = client->server_node;
-
-    char error_msg[MAX_ERROR_LENGTH + 1] = { 0 };
-    for (;;)
-    {
-        struct bulb_obj* obj = bulb_obj_read(&client->mt_sock, error_msg, sizeof(error_msg));
-        if (obj == NULL && !client_flagged_for_deletion(client))
-        {
-            if (error_msg[0] != '\0')
-                server_kick(server, client, error_msg);
-            else
-                server_disconnect_client(server, client, true, true, false);
-        }
-
-        if (client_flagged_for_deletion(client))
-            goto flagged_for_deletion;
-
-        ASSERT(bulb_process_object(obj, server, client), goto flagged_for_deletion,
-            "Failed to process Bulb object of type %d\n", obj->type);
-    }
-
-flagged_for_deletion:
-    client_set_status(client, CLIENT_READY_TO_DELETE);
-    cnd_signal(&client->mt_sock.send_signal);
-    return 0;
-}
-
-// Asynchronously send ping objects to the assigned client momentarily.
-static int server_client_ping_thread(void* c)
-{
-    struct client_node* client = (struct client_node*)c;
-    struct server_node* server = client->server_node;
-
-    for (;;)
-    {
-        // If the client is flagged for deletion, exit.
-        if (client_flagged_for_deletion(client))
-        {
-            client_set_status(client, CLIENT_READY_TO_DELETE);
-            return 0;
-        }
-
-        // Write a ping object to the client, if ready.
-        if (client->ready_to_ping)
-        {
-            ping_obj_write(&client->mt_sock, false);
-            client->ready_to_ping = false;
-        }
-
-        // Hibernate for 5 seconds, or when client disconnect is signalled.
-        struct timespec timestamp;
-        struct timespec current;
-        timespec_get(&timestamp, TIME_UTC);
-        current = timestamp;
-        current.tv_sec += 5;
-        mtx_lock(&client->ping_lock);
-        while (!client_flagged_for_deletion(client) && timespec_cmp(&timestamp, &current) == 1)
-        {
-            cnd_timedwait(&client->client_delete_signal, &client->ping_lock, &timestamp);
-            timespec_get(&current, TIME_UTC);
-        }
-        mtx_unlock(&client->ping_lock);
-    }
-}
-
-// A thread is created for this function whenever a server instance starts listening
-// for incoming client connections to accept.
+// Manage the connection of new clients.
 static int _server_listen_thread(void* s)
 {
     struct bulb_server* server = (struct bulb_server*)s;
@@ -109,12 +37,12 @@ static int _server_listen_thread(void* s)
         node->server_node = server->server_node;
         client_shared_node_init(node);
         
-        SOCKET sock = accept(server->listen_sock, (struct sockaddr*)&node->addr, &length);
+        SOCKET sock = accept(server->server_node->listen_sock, (struct sockaddr*)&node->addr, &length);
         if (sock == INVALID_SOCKET)
         {
             tagged_free(node, TAG_CLIENT_NODE);
-            if (server->disconnect_handled 
-                || server->listen_sock == INVALID_SOCKET
+            if (server->disconnecting 
+                || server->server_node->listen_sock == INVALID_SOCKET
                 || !server_throw_exception(server, SERVER_CLIENT_ACCEPT_FAIL, NULL))
                 return 0;
             continue;
@@ -123,13 +51,11 @@ static int _server_listen_thread(void* s)
         // Get the connecting IP address.
         inet_ntop(AF_INET, &node->addr.sin_addr, node->ip_addr, sizeof(node->ip_addr));
         
-        setup_mt_socket(&node->mt_sock, sock);
-        mt_socket_set_non_blocking(&node->mt_sock);
-        node->mt_sock.timeout_duration = server->server_node->info.timeout_s;
-        SPAWN_CLIENT_THREAD(node, recv_thread);
-        SPAWN_CLIENT_THREAD(node, send_thread);
-        SPAWN_CLIENT_THREAD(node, ping_thread);
-
+        // Initialize the multithreaded socket object for this client.
+        node->mt_sock = mt_socket_new(sock);
+        node->mt_sock->dealloc_func = client_set_ready_to_delete_from_sock;
+        server_listen_client(server->server_node, node);
+        
         // Periodically deallocate clients marked for deletion.
         server_free_flagged_clients(server->server_node);
     }
@@ -141,7 +67,6 @@ static int _server_listen_thread(void* s)
 struct bulb_server* server_init(uint16_t port, enum server_error_state* error_state)
 {
     struct bulb_server* server = tagged_malloc(sizeof(struct bulb_server), TAG_BULB_SERVER);
-    server->listen_sock = INVALID_SOCKET;
 
     // If Winsock is being used, Winsock must be initialized beforehand.
     int result = 0;
@@ -172,14 +97,14 @@ struct bulb_server* server_init(uint16_t port, enum server_error_state* error_st
     }
 
     // Create and bind the socket for the server to listen to client connections.
-    server->listen_sock = socket(addr_ptr->ai_family, addr_ptr->ai_socktype,
+    SOCKET listen_sock = socket(addr_ptr->ai_family, addr_ptr->ai_socktype,
         addr_ptr->ai_protocol);
-    if (server->listen_sock == INVALID_SOCKET)
+    if (listen_sock == INVALID_SOCKET)
     { 
         server->error_state = SERVER_LISTEN_SOCKET_FAIL;
         goto fail; 
     }
-    result = bind(server->listen_sock, addr_ptr->ai_addr, (int)addr_ptr->ai_addrlen);
+    result = bind(listen_sock, addr_ptr->ai_addr, (int)addr_ptr->ai_addrlen);
     if (result == SOCKET_ERROR)
     {
         server->error_state = SERVER_LISTEN_SOCKET_FAIL;
@@ -189,6 +114,7 @@ struct bulb_server* server_init(uint16_t port, enum server_error_state* error_st
 
     server->server_node = server_shared_node_alloc();
     server->server_node->bulb_server = server;
+    server->server_node->listen_sock = listen_sock;
     
     bulb_cmds_init();
     bulb_register_server_cmds();
@@ -197,8 +123,10 @@ struct bulb_server* server_init(uint16_t port, enum server_error_state* error_st
 fail:
     if (error_state != NULL)
         *error_state = server->error_state;
-    if (server->listen_sock != INVALID_SOCKET)
-        closesocket(server->listen_sock);
+    if (server->server_node != NULL)
+        server_disconnect_all_clients(server->server_node);
+    if (listen_sock != INVALID_SOCKET)
+        closesocket(listen_sock);
     if (addr_ptr != NULL)
         freeaddrinfo(addr_ptr);
     tagged_free(server, TAG_BULB_SERVER);
@@ -297,7 +225,7 @@ bool server_listen(struct bulb_server* server)
         return false;
     }
 
-    int result = listen(server->listen_sock, SOMAXCONN);
+    int result = listen(server->server_node->listen_sock, SOMAXCONN);
     if (result == SOCKET_ERROR)
     { 
         server->error_state = SERVER_LISTEN_SOCKET_FAIL;
@@ -305,7 +233,7 @@ bool server_listen(struct bulb_server* server)
     }
     server->is_listening = true;
 
-    thrd_create(&server->listen_thread, _server_listen_thread, (void*)server);
+    thrd_create(&server->listen_thread, _server_listen_thread, server);
     return true;
 }
 
@@ -338,7 +266,7 @@ bool server_input(struct bulb_server* server, const char* msg, bool* cmd_success
     }
     
     LOOP_CLIENTS(server->server_node, NULL, node, 
-        message_obj_write(&node->mt_sock, "[SERVER]", msg, true));
+        message_obj_write(node->mt_sock, "[SERVER]", msg, true));
     return false;
 }
 
@@ -351,12 +279,12 @@ void server_shutdown(struct bulb_server* server, int timeout)
     ASSERT(server->is_listening, return; );
     
     // Shutdown the server's listen socket to prevent any new clients from joining.
-    closesocket(server->listen_sock);
-    server->listen_sock = INVALID_SOCKET;
+    closesocket(server->server_node->listen_sock);
+    server->server_node->listen_sock = INVALID_SOCKET;
 
     LOOP_CLIENTS(server->server_node, NULL, node, 
     {
-        stdout_obj_write(&node->mt_sock, "The server has been shut down.\n", STDOUT_SERVER_SHUTDOWN);
+        stdout_obj_write(node->mt_sock, "The server has been shut down.\n", STDOUT_SERVER_SHUTDOWN);
         server_disconnect_client(server->server_node, node, true, false, true);
     });
 
@@ -384,10 +312,11 @@ void server_free(struct bulb_server* server)
 {
     ASSERT(server, return);
     
-    if (server->listen_sock != INVALID_SOCKET)
+    server->disconnecting = true;
+    if (server->server_node->listen_sock != INVALID_SOCKET)
     {
-        SOCKET sock = server->listen_sock;
-        server->listen_sock = INVALID_SOCKET;
+        SOCKET sock = server->server_node->listen_sock;
+        server->server_node->listen_sock = INVALID_SOCKET;
         shutdown(sock, SHUT_RDWR);
         closesocket(sock);
     }

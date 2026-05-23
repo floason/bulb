@@ -5,19 +5,14 @@
 
 #include <stdbool.h>
 #include <threads.h>
-#include <stdatomic.h>
 
 #include "bulb_macros.h"
 #include "bulb_structs.h"
 
-#ifdef SERVER
-#   include "unisock.h"
-#   include "server_node.h"
-#endif
-
 // TODO: add function for getting list of userinfo objects
 
 struct bulb_server;
+struct server_node;
 
 // Unless specified, data in the exception handler function is NULL by default.
 enum server_error_state
@@ -55,8 +50,7 @@ struct bulb_server
 {
     thrd_t listen_thread;
     bool is_listening;
-    bool disconnect_handled;    // Should be toggled by the exception handler on 
-                                // SERVER_FINISH.
+    bool disconnecting;
     enum server_error_state error_state;
     void* banlist;
 
@@ -64,10 +58,7 @@ struct bulb_server
     // for a non-critical error, the server will terminate.
     server_exception_func exception_handler;
 
-#ifdef SERVER
-    SOCKET listen_sock;
     struct server_node* server_node;
-#endif
 };
 
 // Create a new server instance. error_state can be NULL. Returns NULL on error.

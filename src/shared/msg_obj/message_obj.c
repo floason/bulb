@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "bulb_structs.h"
 #include "server_node.h"
 #include "client_node.h"
@@ -59,12 +60,13 @@ void message_obj_process(struct message_obj* obj, struct server_node* server, st
     // a copy of the sending client's name, the name stored in the client parameter's
     // userinfo object instead should be used in case a fraudulent username is passed
     // in the message object by the client.
-    LOOP_CLIENTS(server, client, node, message_obj_write(&node->mt_sock, client->userinfo->info.name, 
+    LOOP_CLIENTS(server, client, node, message_obj_write(node->mt_sock, client->userinfo->info.name, 
         obj->message, false));
 #else
     struct bulb_message msg_exception_obj;
     msg_exception_obj.name = obj->name;
     msg_exception_obj.message = obj->message;
+    msg_exception_obj.is_server = obj->from_server;
     client_throw_exception(client->bulb_client, CLIENT_RECEIVED_MESSAGE, (void*)&msg_exception_obj);
 #endif
 

@@ -10,6 +10,7 @@
 #include <stddef.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "server_node.h"
 #include "client_node.h"
 #include "bulb_obj.h"

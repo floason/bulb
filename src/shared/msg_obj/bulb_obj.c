@@ -1,26 +1,15 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
-/*
- * Object reading/processing is due for an overall re-write.
- *
- * While the original model was efficient for basic asynchronous object retrieval
- * and sending, it has since grown organically and now requires the use of polling
- * so as to determine the current socket state. This model is not efficient if
- * multiple threads are polling on the exact same socket. I have not yet actually
- * decided to re-write the entire model to use a single event polling thread per
- * client socket connection, as I have other features to introduce first.
- *
- * Except this re-write to take place before v1.
-*/
-
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
 #include <threads.h>
 #include <string.h>
+#include <time.h>
 
 #include "unisock.h"
+#include "networking.h"
 #include "bulb_obj.h"
 
 // This is a basic template for reading a Bulb object that has no additional reading
@@ -31,24 +20,19 @@ struct bulb_obj* bulb_obj_template_recv(struct mt_socket* sock, struct bulb_obj*
     if (header->size != size)
         return NULL;
 
-    // Read the socket stream into a buffer and copy its contents into a dynamically
-    // allocated object. This is the standard method for reading objects.
-    char buffer[RECV_BUFFER_SIZE];
+    // Copy the buffered data nodes into a new Bulb object instance. This is the 
+    // standard method for reading objects.
     struct bulb_obj* obj = tagged_malloc(header->size, TAG_BULB_OBJ);
     size_t offset = 0;
     do
     {
-        int read; 
-        while ((read = recv(sock->socket, (char*)obj + offset, 
-            MIN(header->size - offset, RECV_BUFFER_SIZE), 0)) == SOCKET_ERROR)
-        {
-            // If the socket is blocking, poll and then try again.
-            if (socket_errno() == SOCKET_AGAIN && mt_socket_poll(sock, false))
-                continue;
-            tagged_free(obj, TAG_BULB_OBJ);
-            return NULL;
-        }
-        offset += read;
+        struct mt_socket_data_node* node;
+        QUEUE_DEQUEUE(node, sock->data_recv_queue, sock->data_recv_tail);
+        ASSERT(offset + node->len <= header->size, return NULL, "Too large queued data for object");
+        memcpy((char*)obj + offset, node->data, node->len);
+
+        offset += node->len;
+        tagged_free(node, TAG_TEMP);
     } while (header->size > offset);
 
     return obj;
@@ -57,27 +41,24 @@ struct bulb_obj* bulb_obj_template_recv(struct mt_socket* sock, struct bulb_obj*
 // Send a Bulb object of an arbitrary type to a socket stream. Returns false on failure.
 bool bulb_obj_write(struct mt_socket* sock, struct bulb_obj* obj)
 {
-    // While bulb_obj_template_recv() should only be called by a single thread per socket,
-    // this function in theory can be called using the same socket by multiple threads.
-    // This can cause interleaving in data written to clients, particularly if multiple
-    // clients are messaging at the same time. Therefore, mutexes are used with this
-    // function.
-    mtx_lock(&sock->write_lock);
+    // Create a new mt_socket_data_node object and link it to the socket's data
+    // send queue.
+    struct mt_socket_data_node* node = (struct mt_socket_data_node*)tagged_malloc(
+        sizeof(struct mt_socket_data_node) + obj->size, TAG_TEMP);
+    memcpy(node->data, (const char*)obj, obj->size);
+    node->len = obj->size;
+    QUEUE_ENQUEUE(node, sock->data_send_queue, sock->data_send_tail);
 
-    size_t remaining = obj->size;
-    do
+    // Additionally, except for received_obj, queue a timestamp node to assess
+    // potential timeouts.
+    if (obj->type != BULB_RECEIVED)
     {
-        size_t written = MIN(remaining, RECV_BUFFER_SIZE);
-        struct mt_socket_write_node* node = (struct mt_socket_write_node*)tagged_malloc(
-            sizeof(struct mt_socket_write_node) + written, TAG_TEMP);
-        memcpy(node->data, (const char*)obj + (obj->size - remaining), written);
-        node->len = written;
+        struct mt_socket_timeout_node* timeout = (struct mt_socket_timeout_node*)tagged_malloc(
+            sizeof(struct mt_socket_timeout_node), TAG_TEMP);
+        timespec_get(&timeout->send_timestamp, TIME_UTC);
+        QUEUE_ENQUEUE(timeout, sock->data_send_timeout_queue, sock->data_send_timeout_tail);
+    }
 
-        QUEUE_ENQUEUE(node, sock->send_queue, sock->send_queue_tail);
-        remaining -= written;
-    } while (remaining > 0);
-    
-    cnd_signal(&sock->send_signal);
-    mtx_unlock(&sock->write_lock);
+    MT_SOCKET_FLAG_READY(sock, send);
     return true;
 }
