@@ -39,8 +39,7 @@ void clear_input_buffer_on_screen()
     // NAME: MESSAGE
     unsigned line_length = strlen(userinfo.name) + 2 + input_buffer_w;
 
-    // TODO: introduce in-depth text scanning for more sophisticated messages which
-    // contain newlines, as currently they would be parsed as just another character.
+    // Calculate the number of lines to clear and clear them.
     unsigned cursor_x, cursor_y;
     unsigned num_columns = get_num_columns_for_console();
     int lines = line_length / num_columns + 1;
@@ -105,13 +104,18 @@ void evaluate_status_cmd(struct bulb_userinfo* info)
     // Use mutex locking to ensure that messages are outputted synchronously.
     mtx_lock(&print_message_lock);
 
+    char max_clients_buffer[64];
+    snprintf(max_clients_buffer, sizeof(max_clients_buffer), " (max clients: %d)", info->max_clients);
+
     // Print server information.
     bulb_printver();
     printf("server \"%s\": \"%s\"\n", info->name, info->description);
     if (userinfo.is_server)
-        printf("no. connected: %d\n", server_num_connected(server));
+        printf("no. connected: %d%s\n", server_num_connected(server), 
+            ((info->max_clients > 0) ? max_clients_buffer : ""));
     else
-        printf("no. connected: %d\n", client_num_connected(client));
+        printf("no. connected: %d%s\n", client_num_connected(client), 
+            ((info->max_clients > 0) ? max_clients_buffer : ""));
 
     // Walk through each client and print their information.
     while (info->next != NULL)

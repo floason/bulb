@@ -68,7 +68,9 @@ struct trie* trie_add(struct trie* trie, const char* key, void* value)
                 else
                     break;
             }
-            child = child->next = trie_new();
+            child->next = trie_new();
+            child->next->prev = child;
+            child = child->next;
         }
         else
             child = parent->children = trie_new();
@@ -117,8 +119,6 @@ void* trie_find(struct trie* trie, const char* key)
 // or on failure.
 bool trie_delete(struct trie* trie, const char* key)
 {
-    // TODO: trie cleanup
-
     struct trie* node = _trie_find(trie, key);
     if (node == NULL)
         return false;
@@ -126,6 +126,24 @@ bool trie_delete(struct trie* trie, const char* key)
     if (node->value_copied)
         tagged_free(node->value, TAG_TEMP);
     node->value = NULL;
+    
+    // Iteratively walk through the node's chain of parents to cleanup any
+    // unused nodes.
+    while (node != NULL && node->parent != NULL && node->value == NULL && node->children == NULL)
+    {
+        struct trie* parent = node->parent;
+
+        if (node->next != NULL)
+            node->next->prev = node->prev;
+        
+        if (node->prev != NULL)
+            node->prev->next = node->next;
+        else
+            parent->children = node->next;
+
+        tagged_free(node, TAG_TRIE);
+        node = parent;
+    }
     
     return true;
 }

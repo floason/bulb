@@ -76,7 +76,8 @@ bool server_banlist_addip(struct bulb_server* server,
                           bool* already_banned)
 {
     ASSERT(server != NULL, return false);
-    ASSERT(server->banlist != NULL, return false);
+    if (server->banlist == NULL)
+        return false;
 
     bool found = (trie_find(server->banlist, ip_addr) != NULL);
     if (already_banned != NULL)
@@ -97,7 +98,8 @@ bool server_banlist_removeip(struct bulb_server* server,
                              bool* already_banned)
 {
     ASSERT(server != NULL, return false);
-    ASSERT(server->banlist != NULL, return false);
+    if (server->banlist == NULL)
+        return false;
 
     struct banlist_record* record = trie_find(server->banlist, ip_addr);
     if (already_banned != NULL)
@@ -114,7 +116,8 @@ bool server_banlist_isbanned(struct bulb_server* server,
                              const char** reason)
 {
     ASSERT(server != NULL, return false);
-    ASSERT(server->banlist != NULL, return false);
+    if (server->banlist == NULL)
+        return false;
     
     struct banlist_record* record = trie_find(server->banlist, ip_addr);
     if (record == NULL)
@@ -129,7 +132,8 @@ bool server_banlist_isbanned(struct bulb_server* server,
 bool server_banlist_store(struct bulb_server* server)
 {
     ASSERT(server != NULL, return false);
-    ASSERT(server->banlist != NULL, return false);
+    if (server->banlist == NULL)
+        return false;
 
     FILE* file = fopen("banlist.txt", "w");
     ASSERT(file, return false);

@@ -46,7 +46,12 @@ void client_set_status(struct client_node* client, enum client_status flag)
         case CLIENT_VALIDATED:
             if (client->status < CLIENT_VALIDATED)
                 client->status = CLIENT_VALIDATED;
-            
+
+#ifdef CLIENT
+            // Throw an exception to alert the client about its successful connection.
+            client_throw_exception(client->bulb_client, CLIENT_CONNECTED, NULL);
+#endif
+
             break;
         case CLIENT_FLAGGED_FOR_DELETION:
             if (client->status < CLIENT_FLAGGED_FOR_DELETION)

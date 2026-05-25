@@ -136,7 +136,9 @@ bool client_connect(struct bulb_client* client)
 }
 
 // Authenticate the user's connection. This must be called after the client successfully
-// connects to a server. Returns false on error.
+// connects to a server. On successful validation, the exception CLIENT_CONNECTED will
+// be thrown. On unsuccessful validation, the client will be disconnected. Returns false 
+// on error.
 bool client_authenticate(struct bulb_client* client, struct bulb_userinfo* userinfo)
 {
     ASSERT(client, return false);
@@ -164,8 +166,6 @@ bool client_authenticate(struct bulb_client* client, struct bulb_userinfo* useri
     client->local_node->userinfo = tagged_malloc(sizeof(struct userinfo_obj), TAG_BULB_OBJ);
     memcpy(client->local_node->userinfo, &obj, sizeof(struct userinfo_obj));
 
-    // TODO replace busywait with exception!
-    while (!client_ready(client));
     return true;
 }
 
@@ -183,6 +183,17 @@ BULB_API int client_num_connected(struct bulb_client* client)
     ASSERT(client->local_node, return -1);
     ASSERT(client->local_node->server_node, return -1);
     return client->local_node->server_node->number_connected;
+}
+
+// Get a linked list of each connected client's userinfo object. Returns NULL on
+// failure, or if no clients are connected.
+BULB_API struct bulb_userinfo* client_get_userinfo_list(struct bulb_client* client)
+{
+    ASSERT(client, return NULL);
+    ASSERT(client->local_node, return NULL);
+    ASSERT(client->local_node->server_node, return NULL);
+    ASSERT(client->local_node->server_node->clients_info_head, return NULL);
+    return client->local_node->server_node->clients_info_head->next;
 }
 
 // Is the client disconnecting? The connection may not have been completely

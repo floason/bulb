@@ -5,6 +5,9 @@
 // this translation unit is specifically designed to supplement Bulb's
 // asynchronous networking architecture.
 
+// More scalable I/O event notification mechanisms (e.g. Winsock2's IOCP, 
+// Linux's epoll) may be explored, but this is currently not a priority.
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>

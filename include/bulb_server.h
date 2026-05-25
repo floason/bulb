@@ -9,8 +9,6 @@
 #include "bulb_macros.h"
 #include "bulb_structs.h"
 
-// TODO: add function for getting list of userinfo objects
-
 struct bulb_server;
 struct server_node;
 
@@ -87,6 +85,10 @@ BULB_API bool server_listen(struct bulb_server* server);
 
 // Get the number of connected clients on the server. Returns -1 on failure.
 BULB_API int server_num_connected(struct bulb_server* server);
+
+// Get a linked list of each connected client's userinfo object. Returns NULL on
+// failure, or if no clients are connected.
+BULB_API struct bulb_userinfo* server_get_userinfo_list(struct bulb_server* server);
 
 // Process server input. Returns true if a command was detected, otherwise false.
 BULB_API bool server_input(struct bulb_server* server, const char* msg, bool* cmd_success);

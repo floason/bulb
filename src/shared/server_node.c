@@ -350,29 +350,48 @@ void server_listen_client(struct server_node* server, struct client_node* client
 
     // Configure a socket manager instance to listen to the client's socket.
     struct socket_manager* sm = server->sm_head;
+    bool added = false;
     while (sm != NULL)
     {
-        bool added = false;
         mtx_lock(&sm->socket_add_lock);
         if (sm->active_sockets < SOCKETS_PER_POLLING_THREAD)
         {
-            added = true;
             sm_add(sm, client->mt_sock);
+            added = true;
         }
         mtx_unlock(&sm->socket_add_lock);
+
         if (added)
-            return;
+            break;
+        sm = sm->next;
     }
 
     // If no socket manager instance with spare slots was found, create a new
     // socket manager instance.
-    sm = sm_new();
-    sm->parent_server = server;
-    sm->removed_func = _server_sm_manage_socket_removal;
-    sm->dealloc_func = _server_sm_manage_deallocation;
-    sm_add(sm, client->mt_sock);
-    sm_listen(sm);
-    LINKED_LIST_ADD(sm, server->sm_head, server->sm_tail);
+    if (!added)
+    {
+        sm = sm_new();
+        sm->parent_server = server;
+        sm->removed_func = _server_sm_manage_socket_removal;
+        sm->dealloc_func = _server_sm_manage_deallocation;
+        sm_add(sm, client->mt_sock);
+        sm_listen(sm);
+        LINKED_LIST_ADD(sm, server->sm_head, server->sm_tail);
+    }
+
+    // Now that the client's socket is being listened to, some initial connection
+    // validation checks should be performed.
+    server->number_connected++;
+
+    // Is the server currently at its max capacity?
+    if (server->info.max_clients > 0 && server->number_connected > server->info.max_clients)
+    {
+        char message[256];
+        snprintf(message, sizeof(message), "The server is currently full (max clients: %u).\n",
+            server->info.max_clients);
+        stdout_obj_write(client->mt_sock, message, STDOUT_KICK_MSG);
+        server_disconnect_client(server, client, true, true, true);
+    }
 }
 
 // Connect a new client to a server node's clients list.
@@ -382,7 +401,6 @@ void server_connect_client(struct server_node* server, struct client_node* clien
 
     LINKED_LIST_ADD((&client->userinfo->info), server->clients_info_head, server->clients_info_tail);
     trie_add(server->clients, client->userinfo->info.name, client);
-    server->number_connected++;
 
     // See further client connection (i.e. authentication) code in msg_obj/userinfo_obj.c.
 }   
@@ -438,12 +456,12 @@ void server_disconnect_client(struct server_node* server,
             trie_delete(server->clients, client->userinfo->info.name);
             LINKED_LIST_REMOVE((&client->userinfo->info), server->clients_info_head, 
                 server->clients_info_tail);
-            server->number_connected--;
         }
         LINKED_LIST_ADD(client, server->flagged_clients_list, server->flagged_clients_list_tail);
         mtx_unlock(&server->free_flagged_clients_mutex);
     }
 
+    server->number_connected--;
     if (server_shutdown)
         client->exit_is_orderly = true;
     _client_flag_for_deletion(client, server_shutdown);

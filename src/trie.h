@@ -38,8 +38,9 @@ struct trie
     struct trie* parent;
     struct trie* children;
 
-    // Used for linking children together in a linked list.
+    // Used for linking children together in a doubly-linked list.
     struct trie* next;
+    struct trie* prev;
 };
 
 // Create a new trie.

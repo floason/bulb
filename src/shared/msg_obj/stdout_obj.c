@@ -13,7 +13,6 @@
 #include "server_node.h"
 #include "client_node.h"
 #include "stdout_obj.h"
-#include "userinfo_obj.h"
 
 // Read a stdout_obj. Returns NULL on failure.
 struct bulb_obj* stdout_obj_read(struct mt_socket* sock, struct bulb_obj* header, size_t size)
@@ -51,6 +50,12 @@ void stdout_obj_process(struct stdout_obj* obj, struct server_node* server, stru
 {
 #ifdef CLIENT
     bulb_printf_type(client, obj->type, obj->buffer);
+
+    // This is a horrible hack, but this forces CLIENT_DISCONNECT to be sent instead of
+    // CLIENT_FORCE_DISCONNECT if a client was kicked immediately after establishing a
+    // connection to the server.
+    if (obj->type == STDOUT_KICK_MSG)
+        client->exit_is_orderly = true;
 #else
     // Throw an assert as this should've been caught when the object was received.
     ASSERT(false, return, "stdout_obj found in processing queue from client thread!\n");

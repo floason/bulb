@@ -171,7 +171,7 @@ static inline int str_isprint(const char* str)
 {
     for (int i = 0, len = strlen(str); i < len; i++)
     {
-        if (!isprint(str[i]))
+        if (!isprint(str[i]) && str[i] != '\n')
             return false;
     }
     return true;

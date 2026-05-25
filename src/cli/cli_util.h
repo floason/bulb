@@ -43,6 +43,7 @@ static inline void cleanup()
     if (cli_cmds != NULL)
         trie_free(cli_cmds);
     disable_console_io_functions();
+    mtx_destroy(&print_message_lock);
 }
 
 void clear_input_buffer_on_screen();

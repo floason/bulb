@@ -163,9 +163,7 @@ bool server_throw_exception(struct bulb_server* server,
         {
             // Default to using the Bulb flat-file banlist database.
             struct bulb_ban* obj = (struct bulb_ban*)data;
-            result = server_banlist_addip(server, obj->ip_addr, obj->reason, &obj->is_banned);
-            if (!result)
-                return obj->is_banned;
+            server_banlist_addip(server, obj->ip_addr, obj->reason, &obj->is_banned);
             return true;
         }
         case SERVER_UNBAN_CLIENT:
@@ -174,7 +172,6 @@ bool server_throw_exception(struct bulb_server* server,
             struct bulb_ban* obj = (struct bulb_ban*)data;
             server_banlist_removeip(server, obj->ip_addr, &obj->is_banned);
             return true;
-            
         }
         case SERVER_IS_CLIENT_BANNED:
         {
@@ -185,7 +182,8 @@ bool server_throw_exception(struct bulb_server* server,
         }
         case SERVER_BANLIST_SAVE:
             // Save to the Bulb flat-file banlist database.
-            return server_banlist_store(server);
+            server_banlist_store(server);
+            return true;
 
         default:
             // There is no exception handler available for this exception.
@@ -243,6 +241,16 @@ BULB_API int server_num_connected(struct bulb_server* server)
     ASSERT(server, return -1);
     ASSERT(server->server_node, return -1);
     return server->server_node->number_connected;
+}
+
+// Get a linked list of each connected client's userinfo object. Returns NULL on
+// failure, or if no clients are connected.
+struct bulb_userinfo* server_get_userinfo_list(struct bulb_server* server)
+{
+    ASSERT(server, return NULL);
+    ASSERT(server->server_node, return NULL);
+    ASSERT(server->server_node->clients_info_head, return NULL);
+    return server->server_node->clients_info_head->next;
 }
 
 // Process server input. Returns true if a command was detected, otherwise false.

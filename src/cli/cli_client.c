@@ -3,12 +3,17 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <threads.h>
+#include <stdatomic.h>
 
 #include "console_io.h"
 #include "bulb_client.h"
 
 #include "cli_client.h"
 #include "cli_util.h"
+
+static cnd_t ready_signal;
+static mtx_t ready_lock;
 
 static bool _client_exception_handler(struct bulb_client* client, 
                                       enum client_error_state error, 
@@ -28,6 +33,11 @@ static bool _client_exception_handler(struct bulb_client* client,
                 clear_input_buffer_on_screen();
             cli_client_cleanup(client);
             exit(0);
+
+        // Handle successful client authentication.
+        case CLIENT_CONNECTED:
+            cnd_signal(&ready_signal);
+            return true;
 
         // Handle asynchronous stdout that would otherwise disrupt the input flow.
         case CLIENT_RECEIVED_MESSAGE:
@@ -63,6 +73,9 @@ static bool _client_exception_handler(struct bulb_client* client,
 
 struct bulb_client* cli_client_init(const char* custom_host, uint16_t custom_port)
 {
+    mtx_init(&ready_lock, mtx_plain);
+    cnd_init(&ready_signal);
+
     // Get the host name to connect to and strip the newline character.
     char hostname[2048] = { 0 };
     if (custom_host == NULL)
@@ -123,8 +136,14 @@ struct bulb_client* cli_client_init(const char* custom_host, uint16_t custom_por
     enable_console_io_functions();
 
     // Authenticate the user connection.
-    ASSERT(client_authenticate(client, &userinfo), return NULL, 
+    ASSERT(client_authenticate(client, &userinfo), return NULL,
         "Failed to authenticate server connection!\n");
+
+    // Wait for the client's connection to be authenticated
+    mtx_lock(&ready_lock);
+    while (!client_ready(client))
+        cnd_wait(&ready_signal, &ready_lock);
+    mtx_unlock(&ready_lock);
     return client;
 }
 
@@ -132,6 +151,7 @@ void cli_client_cleanup(struct bulb_client* client)
 {
     if (client == NULL)
         return;
+
     cleanup();
     client_free(client);
 }

@@ -24,25 +24,25 @@
 #include "cli_client.h"
 #include "cli_server.h"
 
-#define CLI_PRINT_CMD_ERROR(CMD, ERROR_MSG)                                                         \
+#define CLI_PRINT_CMD_ERROR(ERROR_MSG)                                                              \
     {                                                                                               \
         fprintf(stderr, "%s for option: %s\nFor help on commands, type \"bulb -h\"\n", ERROR_MSG,   \
-            CMD->name);                                                                             \
+            cmd->name);                                                                             \
         return false;                                                                               \
     }
 
-#define CLI_CONVERT_ARG_TO_INT(VAR, ARG, CMD)                                                       \
+#define CLI_CONVERT_ARG_TO_INT(VAR, ARG)                                                            \
     {                                                                                               \
         char* end;                                                                                  \
         VAR = strtol(ARG, &end, 10);                                                                \
         if (*end != '\0')                                                                           \
-            CLI_PRINT_CMD_ERROR(cmd, "Expected integer");                                           \
+            CLI_PRINT_CMD_ERROR("Expected integer");                                                \
     }
 
-#define CLI_SERVER_ONLY(CMD)                                                                        \
+#define CLI_SERVER_ONLY()                                                                           \
     {                                                                                               \
         if (!userinfo.is_server)                                                                    \
-            CLI_PRINT_CMD_ERROR(cmd, "Server mode must be toggled")                                 \
+            CLI_PRINT_CMD_ERROR("Server mode must be toggled")                                      \
     }
 
 static const char* custom_host = NULL;
@@ -106,7 +106,7 @@ static bool _cli_cmd_help(struct cli_cmd* cmd, const char* argument)
 
 static bool _cli_cmd_port(struct cli_cmd* cmd, const char* argument)
 {   
-    CLI_CONVERT_ARG_TO_INT(port, argument, cmd);
+    CLI_CONVERT_ARG_TO_INT(port, argument);
     return true;
 }
 
@@ -124,7 +124,7 @@ static bool _cli_cmd_desc(struct cli_cmd* cmd, const char* argument)
 
 static bool _cli_cmd_timeout(struct cli_cmd* cmd, const char* argument)
 {
-    CLI_CONVERT_ARG_TO_INT(userinfo.timeout_s, argument, cmd);
+    CLI_CONVERT_ARG_TO_INT(userinfo.timeout_s, argument);
     return true;
 }
 
@@ -143,13 +143,21 @@ static bool _cli_cmd_disable_input(struct cli_cmd* cmd, const char* argument)
 static bool _cli_cmd_server(struct cli_cmd* cmd, const char* argument)
 {
     userinfo.is_server = true;
+    bulb_userinfo_defaults(&userinfo);
     return true;
 }
 
 static bool _cli_cmd_server_shutdown_timeout(struct cli_cmd* cmd, const char* argument)
 {
-    CLI_SERVER_ONLY(cmd);
-    CLI_CONVERT_ARG_TO_INT(userinfo.server_shutdown_timeout_s, argument, cmd);
+    CLI_SERVER_ONLY();
+    CLI_CONVERT_ARG_TO_INT(userinfo.server_shutdown_timeout_s, argument);
+    return true;
+}
+
+static bool _cli_cmd_server_max_clients(struct cli_cmd* cmd, const char* argument)
+{
+    CLI_SERVER_ONLY();
+    CLI_CONVERT_ARG_TO_INT(userinfo.max_clients, argument);
     return true;
 }
 
@@ -168,6 +176,7 @@ int main(int argc, char** argv)
 
     mtx_init(&print_message_lock, mtx_plain | mtx_recursive);
     strcpy(userinfo.description, "using Bulb CLI");
+    bulb_userinfo_defaults(&userinfo);
 
     cli_cmds = trie_new();
     _cli_add_cmd("-h", "lists all Bulb CLI commands", _cli_cmd_help, NULL);
@@ -183,6 +192,8 @@ int main(int argc, char** argv)
         NULL);
     _cli_add_cmd("--server_shutdown_timeout", "set timeout duration when exit cmd called (default: 5s)",
         _cli_cmd_server_shutdown_timeout, "duration");
+    _cli_add_cmd("--server_max_clients", "set max clients (default: 63, set to 0 for no limit)",
+        _cli_cmd_server_max_clients, "count");
 
     // Parse any given command line parameters.
     struct cli_cmd* identified_cmd = NULL;
@@ -222,7 +233,6 @@ int main(int argc, char** argv)
 
     enable_ansi_sequences();
     printf_clear_screen();
-    bulb_userinfo_defaults(&userinfo);
 
     if (userinfo.is_server)
     {
