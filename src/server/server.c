@@ -33,14 +33,14 @@ static int _server_listen_thread(void* s)
     for (;;)
     {
         int length = sizeof(struct sockaddr_in);
-        struct client_node* node = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
+        struct client_node* node = quick_malloc(sizeof(struct client_node));
         node->server_node = server->server_node;
         client_shared_node_init(node);
         
         SOCKET sock = accept(server->server_node->listen_sock, (struct sockaddr*)&node->addr, &length);
         if (sock == INVALID_SOCKET)
         {
-            tagged_free(node, TAG_CLIENT_NODE);
+            free(node);
             if (server->disconnecting 
                 || server->server_node->listen_sock == INVALID_SOCKET
                 || !server_throw_exception(server, SERVER_CLIENT_ACCEPT_FAIL, NULL))
@@ -66,7 +66,7 @@ static int _server_listen_thread(void* s)
 // Create a new server instance. error_state can be NULL. Returns NULL on error.
 struct bulb_server* server_init(uint16_t port, enum server_error_state* error_state)
 {
-    struct bulb_server* server = tagged_malloc(sizeof(struct bulb_server), TAG_BULB_SERVER);
+    struct bulb_server* server = quick_malloc(sizeof(struct bulb_server));
 
     // If Winsock is being used, Winsock must be initialized beforehand.
     int result = 0;
@@ -129,7 +129,7 @@ fail:
         closesocket(listen_sock);
     if (addr_ptr != NULL)
         freeaddrinfo(addr_ptr);
-    tagged_free(server, TAG_BULB_SERVER);
+    free(server);
     return NULL;
 }
 
@@ -331,7 +331,7 @@ void server_free(struct bulb_server* server)
 
     server_disconnect_all_clients(server->server_node);
     server_banlist_close(server);
-    tagged_free(server, TAG_BULB_SERVER);
+    free(server);
 
     bulb_cmds_cleanup();
 

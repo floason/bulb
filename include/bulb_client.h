@@ -32,7 +32,7 @@ enum client_error_state
     CLIENT_WINSOCK_FAIL,        // Windows only.
     CLIENT_ADDRESS_FAIL,
     CLIENT_SOCKET_FAIL,
-    CLIENT_AUTH_FAIL
+    CLIENT_AUTH_FAIL            // Must be listened to using an exception handler.
 };
 
 // Return false to hint critical fault to the client.

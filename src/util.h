@@ -112,29 +112,29 @@
 
 #define LINKED_LIST_ADD(NODE, HEAD, TAIL, ...)                                                      \
     {                                                                                               \
-        NODE->SELECT(next, ##__VA_ARGS__) = NULL;                                                   \
-        NODE->SELECT(prev, ##__VA_ARGS__) = TAIL;                                                   \
-        if (TAIL != NULL)                                                                           \
-            TAIL->SELECT(next, ##__VA_ARGS__) = NODE;                                               \
-        TAIL = NODE;                                                                                \
-        if (HEAD == NULL)                                                                           \
-            HEAD = NODE;                                                                            \
-        NODE->SELECT(linked, ##__VA_ARGS__) = true;                                                 \
+        (NODE)->SELECT(next, ##__VA_ARGS__) = NULL;                                                 \
+        (NODE)->SELECT(prev, ##__VA_ARGS__) = TAIL;                                                 \
+        if ((TAIL) != NULL)                                                                         \
+            (TAIL)->SELECT(next, ##__VA_ARGS__) = NODE;                                             \
+        (TAIL) = (NODE);                                                                            \
+        if ((HEAD) == NULL)                                                                         \
+            (HEAD) = NODE;                                                                          \
+        (NODE)->SELECT(linked, ##__VA_ARGS__) = true;                                               \
     }                                                                                               \
 
 #define LINKED_LIST_REMOVE(NODE, HEAD, TAIL, ...)                                                   \
     {                                                                                               \
-        NODE->SELECT(linked, ##__VA_ARGS__) = false;                                                \
-        if (NODE->SELECT(next, ##__VA_ARGS__))                                                      \
-            NODE->SELECT(next->SELECT(prev, ##__VA_ARGS__), ##__VA_ARGS__)                          \
-                = NODE->SELECT(prev, ##__VA_ARGS__);                                                \
+        (NODE)->SELECT(linked, ##__VA_ARGS__) = false;                                              \
+        if ((NODE)->SELECT(next, ##__VA_ARGS__))                                                    \
+            (NODE)->SELECT(next->SELECT(prev, ##__VA_ARGS__), ##__VA_ARGS__)                        \
+                = (NODE)->SELECT(prev, ##__VA_ARGS__);                                              \
         else                                                                                        \
-            TAIL = NODE->SELECT(prev, ##__VA_ARGS__);                                               \
-        if (NODE->SELECT(prev, ##__VA_ARGS__))                                                      \
-            NODE->SELECT(prev->SELECT(next, ##__VA_ARGS__), ##__VA_ARGS__)                          \
-                = NODE->SELECT(next, ##__VA_ARGS__);                                                \
+            (TAIL) = (NODE)->SELECT(prev, ##__VA_ARGS__);                                           \
+        if ((NODE)->SELECT(prev, ##__VA_ARGS__))                                                    \
+            (NODE)->SELECT(prev->SELECT(next, ##__VA_ARGS__), ##__VA_ARGS__)                        \
+                = (NODE)->SELECT(next, ##__VA_ARGS__);                                              \
         else                                                                                        \
-            HEAD = NODE->SELECT(next, ##__VA_ARGS__);                                               \
+            (HEAD) = (NODE)->SELECT(next, ##__VA_ARGS__);                                           \
     }           
 
 #define LINKED_LIST_EMPTY(NODE) (NODE == NULL)
@@ -143,13 +143,13 @@
 #define QUEUE_ENQUEUE(NODE, HEAD, TAIL, ...) LINKED_LIST_ADD(NODE, HEAD, TAIL, ##__VA_ARGS__)
 #define QUEUE_DEQUEUE(NODE, HEAD, TAIL, ...)                                                        \
     {                                                                                               \
-        if (HEAD == NULL)                                                                           \
+        if ((HEAD) == NULL)                                                                         \
         {                                                                                           \
             ASSERT(false, { }, "Attempted to dequeue from empty queue!\n");                         \
         }                                                                                           \
         else                                                                                        \
         {                                                                                           \
-            NODE = HEAD;                                                                            \
+            (NODE) = (HEAD);                                                                        \
             LINKED_LIST_REMOVE(HEAD, HEAD, TAIL, ##__VA_ARGS__);                                    \
         }                                                                                           \
     }
@@ -193,36 +193,6 @@ static inline void* quick_malloc(size_t size)
 void sleeps(unsigned seconds);
 
 void set_console_exit_handler(void* func);
-
-/*
- * The functions below are used with wrappers around calloc()/free() which
- * effectively tag all dynamically-allocated chunks of memory.
-*/
-
-enum tags
-{
-    TAG_FIRST,
-    TAG_TEMP,
-
-    TAG_TRIE,
-    TAG_BANLIST_RECORD,
-    TAG_SOCKET_MANAGER,
-    TAG_MT_SOCKET,
-    
-    TAG_BULB_CLIENT,
-    TAG_BULB_SERVER,
-    TAG_CLIENT_NODE,
-    TAG_SERVER_NODE,
-    TAG_BULB_OBJ,
-
-    TAG_LAST
-};
-
-void* tagged_calloc(size_t count, size_t size, int tag);
-
-void* tagged_malloc(size_t size, int tag);
-
-void tagged_free(void* ptr, int tag);
 
 /*
  * timespec functions

@@ -32,6 +32,8 @@
 enum stdout_type
 {
     STDOUT_GENERIC,
+
+    // All of these messages are associated with the server disconnecting the client.
     STDOUT_KICK_MSG,
     STDOUT_BAN_MSG,
     STDOUT_SERVER_SHUTDOWN

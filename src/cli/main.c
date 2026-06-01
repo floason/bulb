@@ -163,6 +163,7 @@ static bool _cli_cmd_server_max_clients(struct cli_cmd* cmd, const char* argumen
 
 CREATE_CONSOLE_EXIT_FUNCTION(_cli_exit,
 {
+    mtx_lock(&print_message_lock);
     if (userinfo.is_server)
         cli_server_cleanup(server);
     else
@@ -342,7 +343,7 @@ new_iteration:
                     if (isprint(c))
                         input_buffer[input_buffer_w++] = c;
                     if (!echo_input)
-                        continue;
+                        goto continue_iteration;
                     putchar(c);
 
                     // Due to backwards-compatibility with VT100 functionality,
@@ -356,6 +357,7 @@ new_iteration:
                 }
                 break;
         }
+continue_iteration:
         mtx_unlock(&print_message_lock);
     }
 

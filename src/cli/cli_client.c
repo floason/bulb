@@ -29,6 +29,7 @@ static bool _client_exception_handler(struct bulb_client* client,
             puts("\n\nThe server connection has closed unexpectedly.");
         case CLIENT_AUTH_FAIL:
         case CLIENT_DISCONNECT:
+            mtx_lock(&print_message_lock);
             if (waiting_for_input)
                 clear_input_buffer_on_screen();
             cli_client_cleanup(client);

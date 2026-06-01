@@ -47,14 +47,14 @@ void connect_obj_process(struct connect_obj* obj, struct server_node* server, st
         goto finish;
     }
 
-    node = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
+    node = quick_malloc(sizeof(struct client_node));
     node->status = CLIENT_VALIDATED;
     node->server_node = server;
-    node->userinfo = tagged_malloc(sizeof(struct userinfo_obj), TAG_BULB_OBJ);
+    node->userinfo = quick_malloc(sizeof(struct userinfo_obj));
     memcpy(node->userinfo, &obj->userinfo, sizeof(struct userinfo_obj));
 
 finish:
     server_connect_client(server, node);
 #endif
-    tagged_free(obj, TAG_BULB_OBJ);
+    free(obj);
 }

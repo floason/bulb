@@ -30,7 +30,7 @@ bool stdout_obj_write(struct mt_socket* sock, const char* msg, enum stdout_type 
     // The size of the object is the size of the base structure + the length of the message
     // + 1 for the NUL character at the end.
     size_t size = sizeof(struct stdout_obj) + strlen(msg) + 1;
-    struct stdout_obj* obj = tagged_malloc(size, TAG_BULB_OBJ);
+    struct stdout_obj* obj = quick_malloc(size);
     obj->base.type = BULB_STDOUT;
     obj->base.size = size;
     obj->type = type;
@@ -38,10 +38,10 @@ bool stdout_obj_write(struct mt_socket* sock, const char* msg, enum stdout_type 
 
     if (bulb_obj_write(sock, (struct bulb_obj*)obj) == false)
     {
-        tagged_free(obj, TAG_BULB_OBJ);
+        free(obj);
         return false;
     }
-    tagged_free(obj, TAG_BULB_OBJ);
+    free(obj);
     return true;
 }
 
@@ -51,10 +51,10 @@ void stdout_obj_process(struct stdout_obj* obj, struct server_node* server, stru
 #ifdef CLIENT
     bulb_printf_type(client, obj->type, obj->buffer);
 
-    // This is a horrible hack, but this forces CLIENT_DISCONNECT to be sent instead of
-    // CLIENT_FORCE_DISCONNECT if a client was kicked immediately after establishing a
-    // connection to the server.
-    if (obj->type == STDOUT_KICK_MSG)
+    // This is a horrible hack, but this forces CLIENT_DISCONNECT to be sent instead
+    // of CLIENT_FORCE_DISCONNECT if a stdout_obj object was received by the client
+    // when being disconnected, but not the final disconnect_obj itself.
+    if (obj->type >= STDOUT_KICK_MSG)
         client->exit_is_orderly = true;
 #else
     // Throw an assert as this should've been caught when the object was received.
@@ -62,5 +62,5 @@ void stdout_obj_process(struct stdout_obj* obj, struct server_node* server, stru
 #endif
 
 finish:
-    tagged_free(obj, TAG_BULB_OBJ);
+    free(obj);
 }

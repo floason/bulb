@@ -22,7 +22,7 @@ struct bulb_obj* bulb_obj_template_recv(struct mt_socket* sock, struct bulb_obj*
 
     // Copy the buffered data nodes into a new Bulb object instance. This is the 
     // standard method for reading objects.
-    struct bulb_obj* obj = tagged_malloc(header->size, TAG_BULB_OBJ);
+    struct bulb_obj* obj = quick_malloc(header->size);
     size_t offset = 0;
     do
     {
@@ -32,7 +32,7 @@ struct bulb_obj* bulb_obj_template_recv(struct mt_socket* sock, struct bulb_obj*
         memcpy((char*)obj + offset, node->data, node->len);
 
         offset += node->len;
-        tagged_free(node, TAG_TEMP);
+        free(node);
     } while (header->size > offset);
 
     return obj;
@@ -41,10 +41,12 @@ struct bulb_obj* bulb_obj_template_recv(struct mt_socket* sock, struct bulb_obj*
 // Send a Bulb object of an arbitrary type to a socket stream. Returns false on failure.
 bool bulb_obj_write(struct mt_socket* sock, struct bulb_obj* obj)
 {
+    mtx_lock(&sock->write_lock);
+
     // Create a new mt_socket_data_node object and link it to the socket's data
     // send queue.
-    struct mt_socket_data_node* node = (struct mt_socket_data_node*)tagged_malloc(
-        sizeof(struct mt_socket_data_node) + obj->size, TAG_TEMP);
+    struct mt_socket_data_node* node = (struct mt_socket_data_node*)quick_malloc(
+        sizeof(struct mt_socket_data_node) + obj->size);
     memcpy(node->data, (const char*)obj, obj->size);
     node->len = obj->size;
     QUEUE_ENQUEUE(node, sock->data_send_queue, sock->data_send_tail);
@@ -53,12 +55,13 @@ bool bulb_obj_write(struct mt_socket* sock, struct bulb_obj* obj)
     // potential timeouts.
     if (obj->type != BULB_RECEIVED)
     {
-        struct mt_socket_timeout_node* timeout = (struct mt_socket_timeout_node*)tagged_malloc(
-            sizeof(struct mt_socket_timeout_node), TAG_TEMP);
+        struct mt_socket_timeout_node* timeout = (struct mt_socket_timeout_node*)quick_malloc(
+            sizeof(struct mt_socket_timeout_node));
         timespec_get(&timeout->send_timestamp, TIME_UTC);
         QUEUE_ENQUEUE(timeout, sock->data_send_timeout_queue, sock->data_send_timeout_tail);
     }
 
-    MT_SOCKET_FLAG_READY(sock, send);
+    mt_socket_flag_ready_for_send(sock);
+    mtx_unlock(&sock->write_lock);
     return true;
 }

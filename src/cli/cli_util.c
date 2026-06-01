@@ -62,24 +62,20 @@ void print_message(const char* message, enum stdout_type msg_type)
     // Use mutex locking to ensure that messages are outputted synchronously.
     atomic_store(&print_message_lock_busy, true);
     mtx_lock(&print_message_lock);
-    
-    // If input is not being echoed, the message should be outputted normally so as to
-    // maximise performance.
-    if (!echo_input)
-    {
-        printf("%s", message);
-        goto finish;
-    }
 
-    // The current line length is calculated using the following format:
-    // NAME: MESSAGE
+    // Clear the current input buffer if user input is echoed.
     unsigned line_length = strlen(userinfo.name) + 2 + input_buffer_w;
+    if (echo_input)
+    {
+        // The current line length is calculated using the following format:
+        // NAME: MESSAGE
 
-    // Any pending client user input must be cleared first.
-    if (msg_type == STDOUT_BAN_MSG)
-        printf_clear_screen();
-    else if (waiting_for_input)
-        clear_input_buffer_on_screen();
+        // Any pending client user input must be cleared first.
+        if (msg_type == STDOUT_BAN_MSG)
+            printf_clear_screen();
+        else if (waiting_for_input)
+            clear_input_buffer_on_screen();
+    }
 
     // Always print the message first, which should already be terminated with a newline.
     bool print_red = (msg_type == STDOUT_KICK_MSG || msg_type == STDOUT_SERVER_SHUTDOWN);
@@ -87,14 +83,13 @@ void print_message(const char* message, enum stdout_type msg_type)
 
     // If we had to do some console cleanup beforehand, print the current 
     // input buffer again.
-    if (waiting_for_input)
+    if (waiting_for_input && echo_input)
     {
         printf("%s: %s", name_buffer, input_buffer);
         if (line_length % get_num_columns_for_console() == 0)
             printf("\n");
     }
 
-finish:
     mtx_unlock(&print_message_lock);
     atomic_store(&print_message_lock_busy, false);
 }

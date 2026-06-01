@@ -50,7 +50,7 @@ bool bulb_process_object(struct bulb_obj* obj, struct server_node* server, struc
             received_obj_process((struct received_obj*)obj, server, client);
             return true;
         default:
-            tagged_free(obj, TAG_BULB_OBJ);
+            free(obj);
             return false;
     }
 }

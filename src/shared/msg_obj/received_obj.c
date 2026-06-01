@@ -48,7 +48,7 @@ void received_obj_process(struct received_obj* obj, struct server_node* server, 
     struct mt_socket_timeout_node* node;
     QUEUE_DEQUEUE(node, client->mt_sock->data_send_timeout_queue,
         client->mt_sock->data_send_timeout_tail);
-    tagged_free(node, TAG_TEMP);
+    free(node);
 
-    tagged_free(obj, TAG_BULB_OBJ);
+    free(obj);
 }

@@ -143,11 +143,11 @@ bool bulb_parse_cmd_input(struct server_node* server, const char* buffer)
 
     size_t temp_len = strlen(buffer) + 1;
     char cmd[MAX_CMD_NAME_LENGTH + 1] = "";
-    struct cmd_args params = { .argv = tagged_calloc(1, sizeof(char*), TAG_TEMP) };
+    struct cmd_args params = { .argv = quick_calloc(1, sizeof(char*)) };
 
     // This loop goes up to the end of buffer + the NUL character, in order to
     // handle creating the final parameter/finalising the command name.
-    char* temp_buffer = params.argv[params.argc] = tagged_malloc(temp_len, TAG_TEMP);
+    char* temp_buffer = params.argv[params.argc] = quick_malloc(temp_len);
     bool in_quotes = false;
     bool terminate = false;
     size_t offset = 0;
@@ -186,11 +186,11 @@ bool bulb_parse_cmd_input(struct server_node* server, const char* buffer)
                 }
                 else
                 {
-                    char** new = tagged_calloc(1 + (++params.argc), sizeof(char*), TAG_TEMP);
+                    char** new = calloc(1 + (++params.argc), sizeof(char*));
                     memcpy(new, params.argv, sizeof(char**) * params.argc);
-                    tagged_free(params.argv, TAG_TEMP);
+                    free(params.argv);
                     params.argv = new;
-                    temp_buffer = params.argv[params.argc] = tagged_malloc(temp_len, TAG_TEMP);
+                    temp_buffer = params.argv[params.argc] = quick_malloc(temp_len);
                 }
             }
             if (terminate)
@@ -202,7 +202,7 @@ bool bulb_parse_cmd_input(struct server_node* server, const char* buffer)
 
     // The temporary buffer must be free()'d separately as it is still re-allocated 
     // independently of its assignment to any parameter object.
-    tagged_free(temp_buffer, TAG_TEMP);
+    free(temp_buffer);
 
     struct bulb_cmd* cmd_obj = trie_find(bulb_cmds, cmd);
     bool cmd_success = (cmd_obj != NULL);
@@ -212,8 +212,8 @@ bool bulb_parse_cmd_input(struct server_node* server, const char* buffer)
 
 finish:
     for (int i = 0; i < params.argc; i++)
-        tagged_free(params.argv[i], TAG_TEMP);
-    tagged_free(params.argv, TAG_TEMP);
+        free(params.argv[i]);
+    free(params.argv);
     return cmd_success && ((offset < temp_len) ? bulb_parse_cmd_input(server, &buffer[offset]) : true);
 }
 

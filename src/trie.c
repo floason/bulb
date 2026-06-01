@@ -41,7 +41,7 @@ static struct trie* _trie_find(struct trie* trie, const char* key)
 // Create a new trie.
 struct trie* trie_new()
 {
-    return (struct trie*)tagged_malloc(sizeof(struct trie), TAG_TRIE);
+    return (struct trie*)quick_malloc(sizeof(struct trie));
 }
 
 // Add a new entry to the trie. Returns NULL if the key already exists, or on 
@@ -96,7 +96,7 @@ struct trie* trie_add_copy(struct trie* trie, const char* key, void* value, size
     ASSERT(trie, return NULL);
     ASSERT(strlen(key) > 0, return NULL);
 
-    void* new_value = tagged_malloc(size, TAG_TEMP);
+    void* new_value = quick_malloc(size);
     memcpy(new_value, value, size);
 
     struct trie* node = trie_add(trie, key, new_value);
@@ -124,7 +124,7 @@ bool trie_delete(struct trie* trie, const char* key)
         return false;
 
     if (node->value_copied)
-        tagged_free(node->value, TAG_TEMP);
+        free(node->value);
     node->value = NULL;
     
     // Iteratively walk through the node's chain of parents to cleanup any
@@ -141,7 +141,7 @@ bool trie_delete(struct trie* trie, const char* key)
         else
             parent->children = node->next;
 
-        tagged_free(node, TAG_TRIE);
+        free(node);
         node = parent;
     }
     
@@ -156,6 +156,6 @@ void trie_free(struct trie* trie)
     if (trie->children)
         trie_free(trie->children);
     if (trie->value_copied)
-        tagged_free(trie->value, TAG_TEMP);
-    tagged_free(trie, TAG_TRIE);
+        free(trie->value);
+    free(trie);
 }

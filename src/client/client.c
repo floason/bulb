@@ -22,7 +22,7 @@ struct bulb_client* client_init(const char* host,
                                 const char* port, 
                                 enum client_error_state* error_state)
 {
-    struct bulb_client* client = tagged_malloc(sizeof(struct bulb_client), TAG_BULB_CLIENT);
+    struct bulb_client* client = quick_malloc(sizeof(struct bulb_client));
 
     // If Winsock is being used, Winsock must be initialized beforehand.
     int result = 0;
@@ -48,7 +48,7 @@ struct bulb_client* client_init(const char* host,
     }
 
     // Set up the local client node and instantiate its socket for server communication.
-    client->local_node = localclient = tagged_malloc(sizeof(struct client_node), TAG_CLIENT_NODE);
+    client->local_node = localclient = quick_malloc(sizeof(struct client_node));
     client->local_node->bulb_client = client;
     client_shared_node_init(client->local_node);
     SOCKET sock = socket(client->addr_ptr->ai_family, client->addr_ptr->ai_socktype,
@@ -70,10 +70,10 @@ fail:
     if (error_state != NULL)
         *error_state = client->error_state;
     if (client->local_node != NULL)
-        tagged_free(client->local_node, TAG_CLIENT_NODE);
+        free(client->local_node);
     if (client->addr_ptr != NULL)
         freeaddrinfo(client->addr_ptr);
-    tagged_free(client, TAG_BULB_CLIENT);
+    free(client);
     return NULL;
 }
 
@@ -163,7 +163,7 @@ bool client_authenticate(struct bulb_client* client, struct bulb_userinfo* useri
         return false; 
     }
 
-    client->local_node->userinfo = tagged_malloc(sizeof(struct userinfo_obj), TAG_BULB_OBJ);
+    client->local_node->userinfo = quick_malloc(sizeof(struct userinfo_obj));
     memcpy(client->local_node->userinfo, &obj, sizeof(struct userinfo_obj));
 
     return true;
@@ -243,7 +243,7 @@ void client_free(struct bulb_client* client)
 
     if (client->addr_ptr != NULL)
         freeaddrinfo(client->addr_ptr);
-    tagged_free(client, TAG_BULB_CLIENT);
+    free(client);
 
     bulb_cmds_cleanup();
 

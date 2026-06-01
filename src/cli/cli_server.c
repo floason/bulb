@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <threads.h>
 
 #include "unisock.h"
 #include "bulb_macros.h"
@@ -28,6 +29,7 @@ static bool _cli_server_exception_handler(struct bulb_server* server,
                 COLOR_DEFAULT);
 
             // Handle the actual disconnect sequence.
+            mtx_lock(&print_message_lock);
             cli_server_cleanup(server);
             exit(0);
 

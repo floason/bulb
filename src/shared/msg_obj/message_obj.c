@@ -71,5 +71,5 @@ void message_obj_process(struct message_obj* obj, struct server_node* server, st
 #endif
 
 finish:
-    tagged_free(obj, TAG_BULB_OBJ);
+    free(obj);
 }

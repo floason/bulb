@@ -49,5 +49,5 @@ void ping_obj_process(struct ping_obj* obj, struct server_node* server, struct c
     }
     else
         ping_obj_write(client->mt_sock, true);
-    tagged_free(obj, TAG_BULB_OBJ);
+    free(obj);
 }

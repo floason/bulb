@@ -44,7 +44,7 @@ void update_userinfo_obj_process(struct update_userinfo_obj* obj,
     if (strlen(obj->client_name) > 0)
     {
         struct client_node* node = server_find_by_name(server, obj->client_name);
-        ASSERT(node != NULL, goto not_found, "Could not find node by name \"%s!\"\n", obj->client_name);
+        ASSERT(node != NULL, goto not_found, "Could not find node by name \"%s\"!\n", obj->client_name);
         userinfo = &node->userinfo->info;
     }
     else
@@ -52,5 +52,5 @@ void update_userinfo_obj_process(struct update_userinfo_obj* obj,
     userinfo->ping_ms = obj->updated_info.ping_ms;
 #endif
 not_found:
-    tagged_free(obj, TAG_BULB_OBJ);
+    free(obj);
 }

@@ -21,22 +21,6 @@
 
 #define SOCKETS_PER_POLLING_THREAD  63                           
 
-#define MT_SOCKET_FLAG_READY(SOCKET, ATTRIB)                                        \
-    {                                                                               \
-        if (!SOCKET->GLUE(ATTRIB, _queue.linked))                                   \
-        {                                                                           \
-            QUEUE_ENQUEUE(SOCKET, (*SOCKET->GLUE(ATTRIB, _queue.queue)),            \
-                (*SOCKET->GLUE(ATTRIB, _queue.tail)), GLUE(ATTRIB, _queue));        \
-            cnd_broadcast(SOCKET->ready_signal);                                    \
-        }                                                                           \
-    }
-
-#define MT_SOCKET_DEQUEUE(SOCKET, NODE, ATTRIB)                                     \
-    {                                                                               \
-        QUEUE_DEQUEUE(NODE, (*SOCKET->GLUE(ATTRIB, _queue.queue)),                  \
-            (*SOCKET->GLUE(ATTRIB, _queue.tail)), GLUE(ATTRIB, _queue));            \
-    }
-
 #define LOOP_SOCKET_MANAGERS(LIST, EXCEPT, ID, SCOPE)                               \
     {                                                                               \
         struct socket_manager* ID = LIST;                                           \
@@ -78,9 +62,17 @@ struct mt_socket
     struct socket_manager* parent_sm;
 
     SOCKET socket;
+    mtx_t read_lock;
+    mtx_t write_lock;
     mtx_t* update_lock;
     cnd_t* ready_signal;
+    
     bool listening;
+    bool recv_blocking;
+    bool flag_recv;
+    bool flag_send;
+
+    bool ready_to_close;
 
     struct timespec ping_start;
     struct timespec ping_end;
@@ -129,9 +121,26 @@ struct mt_socket* mt_socket_new(SOCKET s);
 // Configure an mt_socket instance to be non-blocking.
 void mt_socket_configure_non_blocking(struct mt_socket* sock);
 
-// Flag an mt_socket instance to begin waiting for when send() can be used again.
+// Read data into a buffer. This is preferred over raw recv().
+int mt_socket_recv(struct mt_socket* sock, char* buffer, int len, int flags);
+
+// Send data from a buffer. This is preferred over raw send().
+int mt_socket_send(struct mt_socket* sock, const char* buffer, int len, int flags);
+
+// Tell an mt_socket instance to begin waiting for when send() can be used again.
 // This function is effectively a no-op on non-POSIX systems.
 void mt_socket_flag_pending_for_send(struct mt_socket* sock);
+
+// Flag an mt_socket instance as ready for receiving.
+void mt_socket_flag_ready_for_recv(struct mt_socket* sock);
+
+// Flag an mt_socket instance as ready for sending.
+void mt_socket_flag_ready_for_send(struct mt_socket* sock);
+
+// Flag an mt_socket instance as ready for closing. This MUST be called before a
+// socket can finally be removed from a socket manager instance, after the socket
+// termination sequence begins.
+void mt_socket_flag_ready_for_closure(struct mt_socket* sock);
 
 // Shut down an mt_socket instance's connection. This hints to the socket's
 // designated socket manager instance so as to handle complete closure 
@@ -154,6 +163,7 @@ struct socket_manager
     thrd_t listen_thread;
     size_t active_sockets;
     mtx_t socket_add_lock;
+    mtx_t* update_lock;
     
     // These fields assist the merger between two socket managers.
     struct socket_manager* merge_into;
@@ -174,6 +184,7 @@ struct socket_manager
 #elif defined __UNIX__
     int _connection_changed_pipe[2];
     struct pollfd _connection_changed_pfd;
+    bool _fake_pollin_signalled;
 #endif
 };
 

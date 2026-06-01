@@ -21,6 +21,9 @@
 #endif
 
 #define MAX_EVENT_COUNT SOCKETS_PER_POLLING_THREAD + 1
+#define FLAG_RECV       (1 << 0)
+#define FLAG_SEND       (1 << 1)
+#define FLAG_CLOSED     (1 << 2)
 
 #if defined WIN32
 #   define SOCK_EVENT                       WSAEVENT
@@ -39,6 +42,29 @@
 #define MTX_OP_NULLABLE(MTX, FUNC)          \
     if (MTX != NULL)                        \
         FUNC(MTX);                          \
+
+#define MT_SOCKET_FLAG_READY(SOCKET, ATTRIB)                                        \
+    {                                                                               \
+        if (!SOCKET->GLUE(ATTRIB, _queue.linked))                                   \
+        {                                                                           \
+            QUEUE_ENQUEUE(SOCKET, *SOCKET->GLUE(ATTRIB, _queue.queue),              \
+                *SOCKET->GLUE(ATTRIB, _queue.tail), GLUE(ATTRIB, _queue));          \
+            cnd_broadcast(SOCKET->ready_signal);                                    \
+        }                                                                           \
+    }
+    
+#define MT_SOCKET_REMOVE_FROM_QUEUE(SOCKET, ATTRIB)                                 \
+    {                                                                               \
+        if (SOCKET->GLUE(ATTRIB, _queue.linked))                                    \
+            LINKED_LIST_REMOVE(SOCKET, *SOCKET->GLUE(ATTRIB, _queue.queue),         \
+                *SOCKET->GLUE(ATTRIB, _queue.tail), GLUE(ATTRIB, _queue));          \
+    }
+
+#define MT_SOCKET_DEQUEUE(SOCKET, NODE, ATTRIB)                                     \
+    {                                                                               \
+        QUEUE_DEQUEUE(NODE, *SOCKET->GLUE(ATTRIB, _queue.queue),                    \
+            *SOCKET->GLUE(ATTRIB, _queue.tail), GLUE(ATTRIB, _queue));              \
+    }
 
 // Extract each socket event object from each socket manager's active
 // sockets.
@@ -66,16 +92,13 @@ static inline void _sm_remove_socket(struct socket_manager* sm, struct mt_socket
     // socket being removed if it is not at the tail of the sockets array.
     if (sock->_index + 1 < sm->active_sockets--)
     {
-        memmove(&sm->sockets[sock->_index], &sm->sockets[sock->_index + 1], 
+        memcpy(&sm->sockets[sock->_index], &sm->sockets[sock->_index + 1], 
             sizeof(struct mt_socket*) * (sm->active_sockets - sock->_index));
     }
     sm->sockets[sm->active_sockets] = NULL;
 
-    struct mt_socket* throwaway;
-    if (!QUEUE_DEQUEUED((&sock->recv_queue)))
-        MT_SOCKET_DEQUEUE(sock, throwaway, recv);
-    if (!QUEUE_DEQUEUED((&sock->send_queue)))
-        MT_SOCKET_DEQUEUE(sock, throwaway, send);
+    MT_SOCKET_REMOVE_FROM_QUEUE(sock, recv);
+    MT_SOCKET_REMOVE_FROM_QUEUE(sock, send);
 
     // Call the socket manager's outsourced socket removal function.
     if (sm->removed_func != NULL)
@@ -85,8 +108,8 @@ static inline void _sm_remove_socket(struct socket_manager* sm, struct mt_socket
     mtx_unlock(&sm->socket_add_lock);
 }
 
-// Signal the change of a socket connection status.
-static inline void _sm_signal_socket_change(struct socket_manager* sm)
+// Interrupt a polling socket manager instance.
+static inline void _sm_interrupt(struct socket_manager* sm)
 {
 #if defined WIN32
     WSASetEvent(sm->_connection_changed_event);
@@ -98,30 +121,42 @@ static inline void _sm_signal_socket_change(struct socket_manager* sm)
 #endif
 }
 
+// Interrupt a polling socket manager instance about a specific socket.
+static inline void _sm_interrupt_specific(struct mt_socket* sock)
+{
+#if defined WIN32
+    WSASetEvent(sock->_event);
+#elif defined __UNIX__
+    if (sock->parent_sm != NULL)
+    {
+        sock->parent_sm->_fake_pollin_signalled = true;
+        _sm_interrupt(sock->parent_sm);    
+    }
+#else
+    ASSERT(false, return NULL, "Target platform not supported by mt_socket!");
+#endif
+}
+
 // Merge a socket manager instance into another.
 static inline void _sm_merge_into(struct socket_manager* sm, struct socket_manager* into)
 {
     mtx_lock(&into->socket_add_lock);
+    MTX_OP_NULLABLE(into->update_lock, mtx_lock);
+
+    for (int i = 0; i < sm->active_sockets; i++)
+    {
+        struct mt_socket* sock = sm->sockets[i];
+        sock->parent_sm = into;
+        into->sockets[into->active_sockets + i] = sock;
+    }
 
     into->active_sockets += sm->active_sockets;
     into->incoming_sockets -= sm->active_sockets;
-
-    for (int i = into->active_sockets - sm->active_sockets; i < into->active_sockets; i++)
-    {
-        struct mt_socket* sock = sm->sockets[i - into->active_sockets];
-        MTX_OP_NULLABLE(sock->update_lock, mtx_lock);
-
-        into->sockets[i] = sock;
-        into->sockets[i]->parent_sm = into;
-
-        MTX_OP_NULLABLE(sock->update_lock, mtx_unlock);
-    }
-    memcpy(&into->sockets[into->active_sockets], sm->sockets, 
-        sizeof(struct mt_socket*) * sm->active_sockets);
     sm_free(sm);
 
+    MTX_OP_NULLABLE(into->update_lock, mtx_unlock);
     mtx_unlock(&into->socket_add_lock);
-    _sm_signal_socket_change(into);
+    _sm_interrupt(into);
 }
 
 // Calculate the effective reserved socket count of a socket manager instance.
@@ -132,33 +167,52 @@ static inline size_t _sm_reserved_sockets(struct socket_manager* sm)
 
 // Update a socket's status if it threw an event in its correlated socket manager
 // instance. Returns false if the socket manager instance has been de-allocated.
-static bool _sm_update_socket(struct socket_manager* sm, struct mt_socket* selected, bool* updated)
+static bool _sm_update_socket(struct socket_manager* sm, struct mt_socket* selected, unsigned* updated)
 {
 #if defined WIN32
     // Query the socket event's flags and reset the socket event.
     WSANETWORKEVENTS flags = { 0 };
     WSAEnumNetworkEvents(selected->socket, selected->_event, &flags);
 
-    bool flag_read = (flags.lNetworkEvents & FD_READ);
-    bool flag_write = (flags.lNetworkEvents & FD_WRITE);
-    bool flag_closed = ((flags.lNetworkEvents & FD_CLOSE) || !selected->listening);
+    if (flags.lNetworkEvents & FD_CLOSE)
+    {
+        selected->listening = false;
+        selected->flag_recv = true;
+    }
+
+    bool flag_read = ((flags.lNetworkEvents & FD_READ) || selected->flag_recv);
+    bool flag_write = ((flags.lNetworkEvents & FD_WRITE) || selected->flag_send);
 #elif defined __UNIX__
-    bool flag_read = (selected->_pfd.revents & POLLIN);
-    bool flag_write = (selected->_pfd.revents & POLLOUT);
-    bool flag_closed = ((selected->_pfd.revents & (POLLERR | POLLHUP) || !selected->listening));
+    if (selected->_pfd.revents & (POLLERR | POLLHUP))
+    {
+        selected->listening = false;
+        selected->flag_recv = true;
+    }
+
+    bool flag_read = ((selected->_pfd.revents & POLLIN) || selected->flag_recv);
+    bool flag_write = ((selected->_pfd.revents & POLLOUT) || selected->flag_send);
 #endif
+
+    // A socket instance should only be flagged for closure when it is ready to close.
+    bool flag_closed = (!selected->listening && selected->ready_to_close);
+
+    // flag_read will automatically be flagged if socket closure has been detected, as
+    // recv() must be drained before committing to terminating the socket.
+
+    if (flag_read)
+        selected->recv_blocking = false;
+    selected->flag_recv = false;
+    selected->flag_send = false;
 
     // If this socket closed, remove it from the socket manager's sockets
     // array.
     if (updated != NULL)
-        *updated = flag_closed || flag_read || flag_closed;
+        *updated = (flag_closed << 2) | (flag_write << 1) | flag_read;
     bool exit = false;
     mtx_t* client_update_lock = selected->update_lock;
     MTX_OP_NULLABLE(client_update_lock, mtx_lock);
     if (flag_closed)
     {
-        if (updated != NULL)
-            *updated = true;
         _sm_remove_socket(sm, selected);
 
         // If this socket manager instance has no sockets remaining, it
@@ -176,7 +230,7 @@ static bool _sm_update_socket(struct socket_manager* sm, struct mt_socket* selec
     // Signal whether any read/write events took place.
     if (flag_read)
         MT_SOCKET_FLAG_READY(selected, recv);
-    if (flag_closed)
+    if (flag_write)
     {
         MT_SOCKET_FLAG_READY(selected, send);
 
@@ -244,24 +298,33 @@ static int _sm_listen_function(void* obj)
         bool read_connection_changed_event = false;
         while (read(sm->_connection_changed_pipe[PIPE_READ], &buf, sizeof(buf)) > 0)
             read_connection_changed_event = true;
-        if (count == 1 && read_connection_changed_event)
+        count -= (int)(read_connection_changed_event && !sm->_fake_pollin_signalled);
+        if (count == 0)
             continue;
 
-        // Go through each socket until the first socket that signalled an event
-        // has been processed. Not every single is looped through, even if
-        // multiple sockets have signalled an event, as the sockets array may
-        // change.
+        // Go through each socket until all pending sockets have been handled,
+        // or the end of the sockets array has been reached.
         for (int i = 0; i < sm->active_sockets; i++)
         {
             bool updated = false;
             struct mt_socket* selected = sm->sockets[i];
             selected->_pfd.revents = events[i].revents;
 
+            // Exit now if the socket manager instance was deallocated.
             if (!_sm_update_socket(sm, selected, &updated))
                 return 0;
-            if (updated)
-                break;
+
+            // Determine whether to conclude iterating through each socket early.
+            if (updated & FLAG_CLOSED)
+            {
+                count -= (int)(!sm->_fake_pollin_signalled);
+                if (count == 0)
+                    break;
+                else
+                    i--;
+            }
         }
+        sm->_fake_pollin_signalled = false;
 
 #else
         ASSERT(false, return 0, "Target platform not supported by socket_manager!");
@@ -272,9 +335,10 @@ static int _sm_listen_function(void* obj)
 // Create a new mt_socket instance.
 struct mt_socket* mt_socket_new(SOCKET s)
 {
-    struct mt_socket* sock = (struct mt_socket*)tagged_malloc(sizeof(struct mt_socket),
-        TAG_MT_SOCKET);
+    struct mt_socket* sock = (struct mt_socket*)quick_malloc(sizeof(struct mt_socket));
     sock->socket = s;
+    mtx_init(&sock->read_lock, mtx_plain);
+    mtx_init(&sock->write_lock, mtx_plain);
 
 #if defined WIN32
     sock->_event = WSACreateEvent();
@@ -282,7 +346,7 @@ struct mt_socket* mt_socket_new(SOCKET s)
     sock->_pfd.fd = s;
     sock->_pfd.events = POLLIN;
 #else
-    tagged_free(sock, TAG_MT_SOCKET);
+    free(sock);
     ASSERT(false, return NULL, "Target platform not supported by mt_socket!");
 #endif
     
@@ -303,32 +367,94 @@ void mt_socket_configure_non_blocking(struct mt_socket* sock)
 #endif
 }
 
+// Read data into a buffer. This is preferred over raw recv().
+int mt_socket_recv(struct mt_socket* sock, char* buffer, int len, int flags)
+{
+    int result = recv(sock->socket, buffer, len, flags);
+    bool eagain = (socket_errno() == SOCKET_AGAIN);
+    if (result == 0 || (result == -1 && !eagain))
+        mt_socket_flag_ready_for_closure(sock);
+    sock->recv_blocking = (result == -1 && eagain);
+    return result;
+}
+
+// Send data from a buffer. This is preferred over raw send().
+int mt_socket_send(struct mt_socket* sock, const char* buffer, int len, int flags)
+{
+    return send(sock->socket, buffer, len, flags);
+}
+
 // Flag an mt_socket instance to begin waiting for when send() can be used again.
 // This function is effectively a no-op on non-POSIX systems.
 void mt_socket_flag_pending_for_send(struct mt_socket* sock)
 {
-#ifdef __UNIX__
-    sock->_pfd.events |= POLLOUT;
-    if (sock->parent_sm != NULL)
-        _sm_signal_socket_change(sock->parent_sm);
-#endif
-}
-
-// Shut down an mt_socket instance's connection. This hints to the socket's
-// designated socket manager instance so as to handle complete closure 
-// appropriately.
-void mt_socket_shutdown(struct mt_socket* sock)
-{
-    sock->listening = false;
-    shutdown(sock->socket, SHUT_RDWR);
+    ASSERT(sock != NULL, return);
 
 #if defined WIN32
-    WSASetEvent(sock->_event);
+    // no-op
 #elif defined __UNIX__
-    // poll() should immediately return once a socket is shut down.
+    sock->_pfd.events |= POLLOUT;
+    if (sock->parent_sm != NULL)
+        _sm_interrupt(sock->parent_sm);
 #else
     ASSERT(false, return NULL, "Target platform not supported by mt_socket!");
 #endif
+}
+
+// Flag an mt_socket instance as ready for receiving.
+void mt_socket_flag_ready_for_recv(struct mt_socket* sock)
+{
+    ASSERT(sock != NULL, return);
+    sock->flag_recv = true;
+    _sm_interrupt_specific(sock);
+}
+
+// Flag an mt_socket instance as ready for sending.
+void mt_socket_flag_ready_for_send(struct mt_socket* sock)
+{
+    ASSERT(sock != NULL, return);
+
+#if defined WIN32
+    sock->flag_send = true;
+    _sm_interrupt_specific(sock);
+#elif defined __UNIX__
+    // On POSIX platforms, we can just leverage mt_socket_flag_pending_for_send(),
+    // as listening for POLLOUT events will immediately invoke poll() to return if
+    // the socket is ready for sending data.
+    mt_socket_flag_pending_for_send(sock);
+#else
+    ASSERT(false, return NULL, "Target platform not supported by mt_socket!");
+#endif
+}
+
+// Flag an mt_socket instance as ready for closing. This MUST be called before a
+// socket can finally be removed from a socket manager instance, after the socket
+// termination sequence begins.
+void mt_socket_flag_ready_for_closure(struct mt_socket* sock)
+{
+    sock->ready_to_close = true;
+    if (!sock->listening)
+        _sm_interrupt_specific(sock);
+}
+
+// Shut down an mt_socket instance's connection and mark it as no longer listening.
+void mt_socket_shutdown(struct mt_socket* sock)
+{
+    ASSERT(sock != NULL, return);
+
+    sock->listening = false;
+    shutdown(sock->socket, SHUT_WR);
+    mtx_destroy(&sock->read_lock);
+    mtx_destroy(&sock->write_lock);
+
+    // If the last call to recv() blocked, immediately mark this socket as ready for
+    // closure.
+    if (sock->recv_blocking)
+        mt_socket_flag_ready_for_closure(sock);
+
+    // Ensure the socket manager instance is signalled to de-allocate the socket.
+    if (!sock->listening && sock->ready_to_close && !sock->recv_blocking)
+        _sm_interrupt_specific(sock);
 }
 
 // Free an mt_socket instance. This should not be called if the mt_socket instanece
@@ -344,14 +470,14 @@ void mt_socket_free(struct mt_socket* sock)
     {
         struct mt_socket_data_node* temp = node;
         node = node->next;
-        tagged_free(temp, TAG_TEMP);
+        free(temp);
     }
     node = sock->data_send_queue;
     while (node != NULL)
     {
         struct mt_socket_data_node* temp = node;
         node = node->next;
-        tagged_free(temp, TAG_TEMP);
+        free(temp);
     }
 
     // Call the socket's de-allocation function. This is intentionally designed such
@@ -363,15 +489,14 @@ void mt_socket_free(struct mt_socket* sock)
     shutdown(sock->socket, SHUT_RDWR);
     closesocket(sock->socket);
 
-    tagged_free(sock, TAG_MT_SOCKET);
+    free(sock);
 }
 
 // Create a new socket manager instance.
 struct socket_manager* sm_new()
 {
-    struct socket_manager* sm = (struct socket_manager*)tagged_malloc(sizeof(struct socket_manager),
-        TAG_SOCKET_MANAGER);
-    mtx_init(&sm->socket_add_lock, mtx_plain);
+    struct socket_manager* sm = (struct socket_manager*)quick_malloc(sizeof(struct socket_manager));
+    mtx_init(&sm->socket_add_lock, mtx_plain | mtx_recursive);
 
     // There must be a way to alert a polling socket manager instance whether a socket
     // connection has been added/removed. However, this implementation is platform-
@@ -395,16 +520,30 @@ struct socket_manager* sm_new()
 bool sm_add(struct socket_manager* sm, struct mt_socket* sock)
 {
     ASSERT(sock != NULL, return false);
-    if (sm->active_sockets == SOCKETS_PER_POLLING_THREAD)
-        return false;
     
+    bool result = false;
+    mtx_lock(&sm->socket_add_lock);
+
+    if (_sm_reserved_sockets(sm) >= SOCKETS_PER_POLLING_THREAD)
+        goto finish;
+
+    // Block the attempt if the socket manager is taking part in a merger.
+    if (sm->merge_into != NULL)
+        goto finish;
+    
+    result = true;
     sock->listening = true;
     sock->parent_sm = sm;
     sm->sockets[sm->active_sockets++] = sock;
 
+    // Interrupt the socket manager instance so that it can begin listening to the new
+    // socket immediately, if the socket manager instance is currently listening.
     if (sm->listening)
-        _sm_signal_socket_change(sm);
-    return true;
+        _sm_interrupt(sm);
+
+finish:
+    mtx_unlock(&sm->socket_add_lock);
+    return result;
 }
 
 // Start listening to pending socket events. Returns false if no sockets are currently
@@ -431,18 +570,33 @@ bool sm_merge(struct socket_manager* sm, struct socket_manager* into)
     ASSERT(sm != NULL, return false);
     ASSERT(into != NULL, return false);
 
+    bool result = false;
+    mtx_lock(&sm->socket_add_lock);
+    mtx_lock(&into->socket_add_lock);
+
     // Refuse the merger if the new socket manager instance cannot accommodate the
     // old socket manager instance's number of sockets.
-    if (sm->active_sockets > SOCKETS_PER_POLLING_THREAD - _sm_reserved_sockets(into))
-        return false;
+    if (_sm_reserved_sockets(into) + sm->active_sockets > SOCKETS_PER_POLLING_THREAD)
+        goto finish;
     
-    // Refuse the merger if the new socket manager instance is also completing a merger
-    // of its own.
-    if (into->merge_into != NULL)
-        return false;
+    // Refuse the merger if the old socket manager instance is taking part in a merger
+    // already.
+    if (sm->merge_into != NULL || sm->incoming_sockets > 0)
+        goto finish;
 
+    // Refuse the merger if the new socket manager instance is already being merged
+    // into another socket manager.
+    if (into->merge_into != NULL)
+        goto finish; 
+
+    result = true;
+    into->incoming_sockets += sm->active_sockets;
     sm->merge_into = into;
-    _sm_signal_socket_change(into);
+    _sm_interrupt(into);
+
+finish:
+    mtx_unlock(&into->socket_add_lock);
+    mtx_unlock(&sm->socket_add_lock);
     return true;
 }
 
@@ -456,5 +610,5 @@ void sm_free(struct socket_manager* sm)
         sm->dealloc_func(sm);
 
     mtx_destroy(&sm->socket_add_lock);
-    tagged_free(sm, TAG_SOCKET_MANAGER);
+    free(sm);
 }

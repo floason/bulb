@@ -49,7 +49,7 @@ bool server_banlist_load(struct bulb_server* server)
 
         // Create a new banlist record and optionally read into its reason field,
         // if a ban reason is specified.
-        struct banlist_record* record = tagged_malloc(sizeof(struct banlist_record), TAG_BANLIST_RECORD);
+        struct banlist_record* record = quick_malloc(sizeof(struct banlist_record));
         strncpy(record->ip_addr, ip_addr, sizeof(record->ip_addr));
         if (i + 1 < line_buffer_len)
         {
@@ -61,7 +61,7 @@ bool server_banlist_load(struct bulb_server* server)
 
         // Add this record to the banlist dictionary.
         if (trie_add(server->banlist, record->ip_addr, record) == NULL)
-            tagged_free(record, TAG_BANLIST_RECORD);
+            free(record);
     }
 
     fclose(file);
@@ -85,7 +85,7 @@ bool server_banlist_addip(struct bulb_server* server,
     if (found)
         return false;
 
-    struct banlist_record* record = tagged_malloc(sizeof(struct banlist_record), TAG_BANLIST_RECORD);
+    struct banlist_record* record = quick_malloc(sizeof(struct banlist_record));
     strncpy(record->ip_addr, ip_addr, sizeof(record->ip_addr));
     strncpy(record->reason, reason, sizeof(record->reason));
     return trie_add(server->banlist, ip_addr, record);

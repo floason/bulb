@@ -46,12 +46,12 @@ void disconnect_obj_process(struct disconnect_obj* obj,
     else
     {
         struct client_node* node = server_find_by_name(server, obj->name);
-        ASSERT(node != NULL, goto not_found, "Could not find node by name \"%s!\"\n", obj->name);
+        ASSERT(node != NULL, goto not_found, "Could not find node by name \"%s\"!\n", obj->name);
         ASSERT(node != client, goto not_found, 
             "Server object sent disconnect object using localclient name\n");
         server_disconnect_client(server, node, true, true, obj->server_shutdown);
     }
 #endif
 not_found:
-    tagged_free(obj, TAG_BULB_OBJ);
+    free(obj);
 }

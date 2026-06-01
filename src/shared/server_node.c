@@ -1,6 +1,9 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
+// The server_node struct implements the backbone of the Bulb protocol and
+// supplements both the client and the server.
+
 #include <string.h>
 #include <threads.h>
 #include <time.h>
@@ -30,14 +33,14 @@ static inline void _client_flag_for_deletion(struct client_node* client, bool se
     if (client_flagged_for_deletion(client))
         return;
 
-    // Flag the client for deletion.
-    client_set_status(client, CLIENT_FLAGGED_FOR_DELETION);
-    cnd_broadcast(&client->client_delete_signal);
-
     // Signal to the client that the connection is being shut down.
 #ifdef SERVER
     disconnect_obj_write(client->mt_sock, "", server_shutdown);
 #endif
+
+    // Flag the client for deletion.
+    client_set_status(client, CLIENT_FLAGGED_FOR_DELETION);
+    cnd_broadcast(&client->client_delete_signal);
 }
 
 // Close and free a client node.
@@ -64,10 +67,10 @@ static void _client_close(struct client_node* client)
     cnd_destroy(&client->client_delete_signal);
 
     if (client->userinfo != NULL)
-        tagged_free(client->userinfo, TAG_BULB_OBJ);
+        free(client->userinfo);
     if (client->next_obj_header != NULL)
-        tagged_free(client->next_obj_header, TAG_BULB_OBJ);
-    tagged_free(client, TAG_CLIENT_NODE);
+        free(client->next_obj_header);
+    free(client);
 
     mtx_unlock(server_client_update_lock);
 }
@@ -78,7 +81,10 @@ static bool _server_client_recv(struct server_node* server, struct client_node* 
     // Conclude reading objects from a client that is flagged for deletion.
 #ifdef SERVER
     if (client_flagged_for_deletion(client))
+    {
+        mt_socket_flag_ready_for_closure(client->mt_sock);
         return false;
+    }
 #endif
 
     char error_msg[MAX_ERROR_LENGTH + 1] = { 0 };
@@ -117,13 +123,14 @@ static void _server_client_send(struct server_node* server, struct client_node* 
     // queue. Everything must be written before the send thread mutex is unlocked,
     // to allow for complete objects to be transmitted before any client disconnect
     // may be handled.
+    mtx_lock(&client->mt_sock->write_lock);
     while (!QUEUE_EMPTY(client->mt_sock->data_send_queue))
     {
         struct mt_socket_data_node* node;
         QUEUE_DEQUEUE(node, client->mt_sock->data_send_queue, client->mt_sock->data_send_tail);
         do
         {
-            int result = send(client->mt_sock->socket, node->data + node->send_offset, 
+            int result = mt_socket_send(client->mt_sock, node->data + node->send_offset, 
                 node->len - node->send_offset, MSG_NOSIGNAL);
 
             // Exit on any error.
@@ -140,13 +147,13 @@ static void _server_client_send(struct server_node* server, struct client_node* 
                     client->mt_sock->data_send_queue = node;
                 }
                 else
-                    tagged_free(node, TAG_TEMP);
-                return;
+                    free(node);
+                goto exit;
             }
 
             node->send_offset += result;
         } while (node->send_offset < node->len);
-        tagged_free(node, TAG_TEMP);
+        free(node);
     }
 
     // If the data queue is now empty and the client is flagged for deletion, hint to 
@@ -154,12 +161,16 @@ static void _server_client_send(struct server_node* server, struct client_node* 
     // removed from the socket manager.
     if (QUEUE_EMPTY(client->mt_sock->data_send_queue) && client_flagged_for_deletion(client))
         mt_socket_shutdown(client->mt_sock);
+exit:
+    mtx_unlock(&client->mt_sock->write_lock);
 }
 
 // Each client is managed in a single centralised thread operated by the server,
 // dependent on whether a client is ready to receive & process or send an object.
 static int _server_manage_thread(void* s)
 {
+    // TODO post-v1: consider SPSC ring buffers before IOCP/epoll overhaul?
+
     struct server_node* server = (struct server_node*)s;
     struct timespec next_timeout_check;
     struct timespec next_ping;
@@ -191,19 +202,18 @@ static int _server_manage_thread(void* s)
             cnd_destroy(&server->client_update_signal);
             mtx_unlock(&server->client_update_lock);
             mtx_destroy(&server->client_update_lock);
-            tagged_free(server, TAG_SERVER_NODE);
+            free(server);
             return 0;
         }
-
-#ifdef SERVER
-        // Before attempting to read/write to a socket, iterate through each connected node 
-        // and test for timeout if the next timeout check is due.
+        
+        // Handle timeout.
         if (timeout_sec_diff >= 0)
         {
             next_timeout_check.tv_sec += timeout_sec_diff + 1;
 
-            // Also check for whether to ping each client, which should take place every
-            // 5 seconds.
+#ifdef SERVER
+            // Check for whether to ping each client, which should take place every 5 
+            // seconds.
             int ping_sec_diff = timespec_diff(&current_timestamp, &next_ping, 0);
             if (ping_sec_diff >= 0)
                 next_ping.tv_sec += 5 * (ping_sec_diff / 5 + 1);
@@ -248,24 +258,24 @@ static int _server_manage_thread(void* s)
                 
                 to_kick = next;
             }
-        }
 #else
-        // Check if the local client has timed out.
-        struct mt_socket_timeout_node* timeout = localclient->mt_sock->data_send_timeout_queue;
-        if (timeout != NULL && localclient->userinfo != NULL
-            && (timespec_diff(&current_timestamp, &timeout->send_timestamp, 0)
-                > localclient->userinfo->info.timeout_s
-            ) && !client_flagged_for_deletion(localclient))
-        {
-            bulb_printf_type(localclient, STDOUT_KICK_MSG,
-                "Client timed out while attempting to send data to server!\n");
-            server_disconnect_client(server, localclient, false, true, true);
-            
-            // Immediately shut down the client's socket, as there is no successful
-            // response being made with the server.
-            mt_socket_shutdown(localclient->mt_sock);
-        }
+            // Check if the local client has timed out.
+            struct mt_socket_timeout_node* timeout = localclient->mt_sock->data_send_timeout_queue;
+            if (timeout != NULL && localclient->userinfo != NULL
+                && (timespec_diff(&current_timestamp, &timeout->send_timestamp, 0)
+                    > localclient->userinfo->info.timeout_s
+                ) && !client_flagged_for_deletion(localclient))
+            {
+                bulb_printf_type(localclient, STDOUT_KICK_MSG,
+                    "Client timed out while attempting to send data to server!\n");
+                server_disconnect_client(server, localclient, false, true, true);
+                
+                // Immediately shut down the client's socket, as there is no successful
+                // response being made with the server.
+                mt_socket_shutdown(localclient->mt_sock);
+            }
 #endif
+        }
 
         // Dequeue a socket from the read queue and attempt to read an object from it.
         struct mt_socket* selected;
@@ -315,8 +325,8 @@ void _server_sm_manage_deallocation(struct socket_manager* sm)
 // Initialise the server node.
 struct server_node* server_shared_node_alloc()
 {
-    struct server_node* server = tagged_malloc(sizeof(struct server_node), TAG_SERVER_NODE);
-    mtx_init(&server->free_flagged_clients_mutex, mtx_plain | mtx_recursive);
+    struct server_node* server = quick_malloc(sizeof(struct server_node));
+    mtx_init(&server->connection_update_mutex, (mtx_plain | mtx_recursive));
     mtx_init(&server->server_emptied_mutex, mtx_plain);
     cnd_init(&server->server_emptied_signal);
 
@@ -346,41 +356,12 @@ void server_listen_client(struct server_node* server, struct client_node* client
     // recv()/send() operations by adding the client socket to the socket
     // queue.
     mt_socket_configure_non_blocking(client->mt_sock);
-    MT_SOCKET_FLAG_READY(client->mt_sock, recv);
-
-    // Configure a socket manager instance to listen to the client's socket.
-    struct socket_manager* sm = server->sm_head;
-    bool added = false;
-    while (sm != NULL)
-    {
-        mtx_lock(&sm->socket_add_lock);
-        if (sm->active_sockets < SOCKETS_PER_POLLING_THREAD)
-        {
-            sm_add(sm, client->mt_sock);
-            added = true;
-        }
-        mtx_unlock(&sm->socket_add_lock);
-
-        if (added)
-            break;
-        sm = sm->next;
-    }
-
-    // If no socket manager instance with spare slots was found, create a new
-    // socket manager instance.
-    if (!added)
-    {
-        sm = sm_new();
-        sm->parent_server = server;
-        sm->removed_func = _server_sm_manage_socket_removal;
-        sm->dealloc_func = _server_sm_manage_deallocation;
-        sm_add(sm, client->mt_sock);
-        sm_listen(sm);
-        LINKED_LIST_ADD(sm, server->sm_head, server->sm_tail);
-    }
-
-    // Now that the client's socket is being listened to, some initial connection
-    // validation checks should be performed.
+    
+    // Prior to requesting a socket manager instance to listen to this client's
+    // socket, some initial validation checks must be performed. Even if the 
+    // client is disconnected at this point, there must still be brief
+    // communication for e.g. alerting the user as to why their connection
+    // attempt was rejected.
     server->number_connected++;
 
     // Is the server currently at its max capacity?
@@ -392,6 +373,34 @@ void server_listen_client(struct server_node* server, struct client_node* client
         stdout_obj_write(client->mt_sock, message, STDOUT_KICK_MSG);
         server_disconnect_client(server, client, true, true, true);
     }
+
+    // Configure a socket manager instance to listen to the client's socket.
+    struct socket_manager* sm = server->sm_head;
+    bool added = false;
+    while (sm != NULL)
+    {
+        if ((added = sm_add(sm, client->mt_sock)))
+            break;
+        sm = sm->next;
+    }
+
+    // If no socket manager instance with spare slots was found, create a new
+    // socket manager instance.
+    if (!added)
+    {
+        sm = sm_new();
+        sm->parent_server = server;
+        sm->update_lock = &server->client_update_lock;
+        sm->removed_func = _server_sm_manage_socket_removal;
+        sm->dealloc_func = _server_sm_manage_deallocation;
+        sm_add(sm, client->mt_sock);
+        sm_listen(sm);
+        LINKED_LIST_ADD(sm, server->sm_head, server->sm_tail);
+    }
+
+    // Flag the socket as ready for recv(). This is required so as to immediately
+    // begin reading any objects on the socket.
+    mt_socket_flag_ready_for_recv(client->mt_sock);
 }
 
 // Connect a new client to a server node's clients list.
@@ -399,8 +408,16 @@ void server_connect_client(struct server_node* server, struct client_node* clien
 {
     // The client node should already have its socket and userinfo configured.
 
-    LINKED_LIST_ADD((&client->userinfo->info), server->clients_info_head, server->clients_info_tail);
+    LINKED_LIST_ADD(&client->userinfo->info, server->clients_info_head, server->clients_info_tail);
     trie_add(server->clients, client->userinfo->info.name, client);
+
+#ifdef CLIENT
+    // Clients are not responsible for managing the socket of each connected client,
+    // thus the server_listen_client() function is never called. The server node's
+    // number_connected attribute must therefore be incremented here instead.
+    if (client != localclient)
+        server->number_connected++;
+#endif
 
     // See further client connection (i.e. authentication) code in msg_obj/userinfo_obj.c.
 }   
@@ -412,6 +429,8 @@ void server_disconnect_client(struct server_node* server,
                               bool unlink,
                               bool server_shutdown)
 {
+    mtx_lock(&server->connection_update_mutex);
+
 #ifdef SERVER
     // If the client did not fail server authentication checks, log whether it disconnected 
     // or if the client attempted to connect but a connection could not be established to 
@@ -437,7 +456,7 @@ void server_disconnect_client(struct server_node* server,
     }
 
     // Synchronise the client's departure with all other clients.
-    if (client->status == CLIENT_VALIDATED)
+    if (client->status >= CLIENT_VALIDATED)
     {
         LOOP_CLIENTS(server, client, node, 
             disconnect_obj_write(node->mt_sock, client->userinfo->info.name, server_shutdown));
@@ -450,21 +469,21 @@ void server_disconnect_client(struct server_node* server,
     // is thus likely to cause a segmentation fault.
     if (unlink)
     {
-        mtx_lock(&server->free_flagged_clients_mutex);
         if (client->userinfo)
         {
             trie_delete(server->clients, client->userinfo->info.name);
-            LINKED_LIST_REMOVE((&client->userinfo->info), server->clients_info_head, 
+            LINKED_LIST_REMOVE(&client->userinfo->info, server->clients_info_head, 
                 server->clients_info_tail);
         }
         LINKED_LIST_ADD(client, server->flagged_clients_list, server->flagged_clients_list_tail);
-        mtx_unlock(&server->free_flagged_clients_mutex);
     }
 
     server->number_connected--;
     if (server_shutdown)
         client->exit_is_orderly = true;
     _client_flag_for_deletion(client, server_shutdown);
+
+    mtx_unlock(&server->connection_update_mutex);
 }
 
 // Check if a client is connected without iterating through the entire list of clients.
@@ -567,7 +586,7 @@ void server_disconnect_all_clients(struct server_node* server)
     });
     trie_free(server->clients);
 
-    mtx_destroy(&server->free_flagged_clients_mutex);
+    mtx_destroy(&server->connection_update_mutex);
     mtx_destroy(&server->server_emptied_mutex);
     cnd_destroy(&server->server_emptied_signal);
 

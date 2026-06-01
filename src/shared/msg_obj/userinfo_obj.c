@@ -43,11 +43,12 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     if (client->userinfo != NULL)
     {
         server_kick(server, client, "Attempted to re-authenticate by sending duplicate userinfo_obj node");
-        tagged_free(obj, TAG_BULB_OBJ);
+        free(obj);
         return;
     }
 
     // Reject clients with empty usernames.
+    bool client_kicked = true;
     if (strlen(obj->info.name) == 0)
     {
         stdout_obj_write(client->mt_sock, "Your username cannot be empty!\n", STDOUT_KICK_MSG);
@@ -112,7 +113,7 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     }
 
     // Reject the client if it has the same username as another user.
-    bool client_kicked = false;
+    client_kicked = false;
     LOOP_CLIENTS(server, client, node,
     {
         if (strcmp(obj->info.name, node->userinfo->info.name) == 0)
@@ -128,6 +129,11 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
     });
     if (client_kicked)
         goto kick_client;
+    
+    // Reject the client if it is already flagged for deletion.
+    mtx_lock(&server->connection_update_mutex);
+    if (client_flagged_for_deletion(client))
+        goto unlock_mutex;
 
     // Validate the client and log its entry.
     client->userinfo = obj;
@@ -157,11 +163,12 @@ void userinfo_obj_process(struct userinfo_obj* obj, struct server_node* server, 
         connect_obj_write(client->mt_sock, node->userinfo, false);
         connect_obj_write(node->mt_sock, client->userinfo, false);
     });
-    
-    return;
 
+unlock_mutex:
+    mtx_unlock(&server->connection_update_mutex);
 kick_client:
-    server_disconnect_client(server, client, false, true, true);
+    if (client_kicked)
+        server_disconnect_client(server, client, false, true, true);
     return;
 #else
     struct bulb_userinfo* next = server->info.next;

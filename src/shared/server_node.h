@@ -1,9 +1,8 @@
 // floason (C) 2025
 // Licensed under the MIT License.
 
-// The server_node struct is useful to both client and server code, as it can be used
-// to manage a total list of connected clients on either end, while also reading server
-// information.
+// The server_node struct implements the backbone of the Bulb protocol and
+// supplements both the client and the server.
 
 #pragma once
 
@@ -19,14 +18,14 @@
 // Clients should NOT be disconnected/kicked from the server within this loop!
 #define LOOP_CLIENTS(SERVER, EXCEPT, ID, SCOPE)                                 \
     {                                                                           \
-        mtx_lock(&SERVER->free_flagged_clients_mutex);                          \
+        mtx_lock(&SERVER->connection_update_mutex);                             \
         TRIE_DFS(SERVER->clients, trie##ID,                                     \
         {                                                                       \
             struct client_node* ID = (struct client_node*)trie##ID;             \
             if (ID != EXCEPT && ID->status == CLIENT_VALIDATED)                 \
                 SCOPE;                                                          \
         });                                                                     \
-        mtx_unlock(&SERVER->free_flagged_clients_mutex);                        \
+        mtx_unlock(&SERVER->connection_update_mutex);                           \
     }                                                                  
 
 struct bulb_server;
@@ -43,7 +42,7 @@ struct server_node
 
     unsigned number_connected;
     unsigned number_pending_deletion;
-    mtx_t free_flagged_clients_mutex;
+    mtx_t connection_update_mutex;
     mtx_t server_emptied_mutex;
     cnd_t server_emptied_signal;
 

@@ -30,14 +30,6 @@
         if (socket_errno() == SOCKET_AGAIN)                                                 \
         {                                                                                   \
             *try_again = true;                                                              \
-                                                                                            \
-            /* If the header object has already been read, it's highly likely that */       \
-            /* the object is pending full transmission. Unless dequeued manually */         \
-            /* on connection closure, this socket should be added to the back of */         \
-            /* the server's read queue. */                                                  \
-            if (client->next_obj_header != NULL)                                            \
-                MT_SOCKET_FLAG_READY(sock, recv);                                           \
-                                                                                            \
             return NULL;                                                                    \
         }                                                                                   \
                                                                                             \
@@ -68,10 +60,10 @@ struct bulb_obj* bulb_obj_read(struct mt_socket* sock, char* error_msg, size_t l
     int read;
     if (client->next_obj_header == NULL)
     {
-        while ((read = recv(sock->socket, buffer, sizeof(struct bulb_obj), MSG_PEEK)) 
+        while ((read = mt_socket_recv(sock, buffer, sizeof(struct bulb_obj), MSG_PEEK)) 
             < (int)sizeof(struct bulb_obj))
             EVALUATE_READ_FAIL();
-        client->next_obj_header = (struct bulb_obj*)tagged_malloc(sizeof(struct bulb_obj), TAG_BULB_OBJ);
+        client->next_obj_header = (struct bulb_obj*)quick_malloc(sizeof(struct bulb_obj));
         memcpy(client->next_obj_header, buffer, sizeof(struct bulb_obj));
     }
 
@@ -79,13 +71,13 @@ struct bulb_obj* bulb_obj_read(struct mt_socket* sock, char* error_msg, size_t l
     // fully transmitted, the function will also terminate early.
     do
     {
-        if ((read = recv(sock->socket, buffer, 
+        if ((read = mt_socket_recv(sock, buffer, 
                 MIN(client->next_obj_header->size - client->read_offset, RECV_BUFFER_SIZE), 0)) 
             <= 0)
             EVALUATE_READ_FAIL();
 
-        struct mt_socket_data_node* node = (struct mt_socket_data_node*)tagged_malloc(
-            sizeof(struct mt_socket_data_node) + read, TAG_TEMP);
+        struct mt_socket_data_node* node = (struct mt_socket_data_node*)quick_malloc(
+            sizeof(struct mt_socket_data_node) + read);
         memcpy(node->data, buffer, read);
         node->len = read;
         QUEUE_ENQUEUE(node, sock->data_recv_queue, sock->data_recv_tail);

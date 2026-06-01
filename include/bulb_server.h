@@ -18,11 +18,15 @@ enum server_error_state
     // OK
     SERVER_OK,
 
-    // Exceptions which do not disrupt the server instance.
+    // Exceptions which do not disrupt the server instance by default.
     SERVER_CLIENT_ACCEPT_FAIL,
     SERVER_PRINT_STDOUT,        // data is bulb_stdout*
     SERVER_RECEIVED_MESSAGE,    // data is bulb_message*
     SERVER_STATUS_CMD,          // data is bulb_userinfo* (first instance is server, rest are clients)
+
+    // These exceptions are part of Bulb's player ban management. If the installed
+    // exception handler installed returns false on these exceptions, Bulb will
+    // default to the Bulb banlist database implementation.
     SERVER_BAN_CLIENT,          // data is bulb_ban*, may update is_banned if address already banned
     SERVER_UNBAN_CLIENT,        // data is bulb_ban*, may update is_banned if address was banned
     SERVER_IS_CLIENT_BANNED,    // data is bulb_ban*, may update reason and is_banned
